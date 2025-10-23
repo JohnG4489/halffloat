@@ -20,7 +20,9 @@ void debug_neg(void);
 void debug_add(void);
 void debug_mul(void);
 void debug_div(void);
+void debug_inv(void);
 void debug_sqrt(void);
+void debug_rsqrt(void);
 void debug_pow(void);
 void debug_exp(void);
 void debug_int(void);
@@ -28,6 +30,8 @@ void debug_ln(void);
 void debug_sin(void);
 void debug_cos(void);
 void debug_tan(void);
+void debug_asin(void);
+void debug_acos(void);
 void debug_denormal_values(void);
 void debug_mathematical_identities(void);
 void debug_ieee754_edge_cases(void);
@@ -36,5 +40,6 @@ void debug_comparative_accuracy(void);
 void debug_boundary_conditions(void);
 void debug_special_constants(void);
 void debug_inverse_functions(void);
+void debug_rsqrt_comparison(void);
 
 #endif //HF_TESTS_H

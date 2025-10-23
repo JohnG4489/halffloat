@@ -35,6 +35,7 @@ int main(int argc, char *argv[]) {
     
     //Initialisation des tables nécessaires
     fill_sin_table();
+    fill_asin_table();
     fill_exp_table();
     fill_ln_table();
     fill_tan_tables_dual();  //Nouvelle fonction dual-table optimisée à 75°
@@ -43,31 +44,40 @@ int main(int argc, char *argv[]) {
     printf("===== Half-Float Library Test Suite =====\n\n");
 
     //Série de tests pour différentes fonctions mathématiques
+    debug_int();
     debug_abs();
     debug_neg();
-    debug_cos();
-    debug_sin();
-    debug_tan();
-    debug_exp();
-    debug_pow();
-    debug_ln();
-    debug_sqrt();
+
     debug_add();
+    //debug_sub();
     debug_mul();
     debug_div();
-    debug_int();
+    debug_inv();
+    debug_sqrt();
+    debug_rsqrt();
+
+    debug_ln();
+    debug_exp();
+    debug_pow();
+
+    debug_sin();
+    debug_cos();
+    debug_tan();
+    debug_asin();
+    debug_acos();
 
     //Tests spécialisés ajoutés
     debug_denormal_values();
     debug_mathematical_identities();
     debug_ieee754_edge_cases();
-    
+
     //Tests de validation exhaustive nouveaux
     debug_precision_stress_test();
     debug_comparative_accuracy();
     debug_boundary_conditions();
     debug_special_constants();
     debug_inverse_functions();
+    debug_rsqrt_comparison();
 
     //Message de conclusion
     printf("\n===== All Tests Completed =====\n");

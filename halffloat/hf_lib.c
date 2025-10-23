@@ -3,7 +3,7 @@
  * @brief Implémentation des fonctions mathématiques pour Half-Float IEEE 754
  * 
  * Ce fichier implémente toutes les opérations arithmétiques et mathématiques
- * pour les nombres flottants de demi-précision : addition, multiplication,
+ * pour les nombres flottants de demi-précision: addition, multiplication,
  * division, racine carrée, fonctions transcendantes (exp, ln, pow) et
  * trigonométriques (sin, cos, tan) avec conformité IEEE 754 complète.
  * 
@@ -16,6 +16,11 @@
 #include "hf_lib.h"
 #include "hf_precalc.h"
 
+//Fonctions de comparaison
+uint16_t hf_cmp(uint16_t hf1, uint16_t hf2);
+uint16_t hf_min(uint16_t hf1, uint16_t hf2);
+uint16_t hf_max(uint16_t hf1, uint16_t hf2);
+
 //Fonctions mathématiques de base
 uint16_t hf_int(uint16_t hf);
 uint16_t hf_abs(uint16_t hf);
@@ -23,9 +28,12 @@ uint16_t hf_neg(uint16_t hf);
 
 //Opérations arithmétiques
 uint16_t hf_add(uint16_t hf1, uint16_t hf2);
+uint16_t hf_sub(uint16_t hf1, uint16_t hf2);
 uint16_t hf_mul(uint16_t hf1, uint16_t hf2);
 uint16_t hf_div(uint16_t hf1, uint16_t hf2);
+uint16_t hf_inv(uint16_t hf);
 uint16_t hf_sqrt(uint16_t hf);
+uint16_t hf_rsqrt(uint16_t hf);
 
 //Fonctions transcendantes
 uint16_t hf_ln(uint16_t hf);
@@ -36,11 +44,142 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp);
 uint16_t hf_sin(uint16_t hfangle);
 uint16_t hf_cos(uint16_t hfangle);
 uint16_t hf_tan(uint16_t hfangle);
+uint16_t hf_asin(uint16_t hf);
+uint16_t hf_acos(uint16_t hf);
 
 //Déclarations des fonctions internes statiques
 static uint16_t reduce_radian_uword(uint32_t angle_rad_fixed, int fact);
 static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift);
-static void normalize_denormalized_mantissa(half_float *hf);
+static uint16_t asinus_shiftable(uint16_t hf, uint32_t shift);
+
+/**
+ * @brief Compare deux demi-flottants (IEEE 754 - half precision)
+ *
+ * Compare deux valeurs demi-précision et renvoie le résultat
+ * sous forme d'un demi-flottant codé IEEE 754 :
+ *  - +1.0  si hf1 > hf2
+ *  - -1.0  si hf1 < hf2
+ *  - +0.0 ou -0.0 si hf1 == hf2
+ *  - qNaN si comparaison impossible (NaN détecté)
+ *
+ * Conforme IEEE 754 :
+ *  - NaN (quiet ou signaling) → retourne qNaN (aucune exception levée)
+ *  - +0 et -0 considérés égaux
+ *  - +/-Inf et subnormaux traités selon l'ordre total IEEE
+ *  - Aucun signal d'exception matériel (environnement sans FPU)
+ *
+ * @param hf1 Premier demi-flottant
+ * @param hf2 Second demi-flottant
+ * @return Résultat au format demi-flottant IEEE 754
+ */
+uint16_t hf_cmp(uint16_t hf1, uint16_t hf2) {
+    uint16_t result = HF_ZERO_POS; //+0.0 par défaut (couvre +0==−0 et +/-Inf==+/-Inf)
+    half_float input1 = decompose_half(hf1);
+    half_float input2 = decompose_half(hf2);
+
+    if(is_nan(input1) || is_nan(input2)) {
+        result = HF_NAN; //qNaN
+    }
+    else if(input1.sign != input2.sign && !(is_zero(input1) && is_zero(input2))) {
+        result = input1.sign ? HF_ONE_NEG : HF_ONE_POS; //négatif < positif
+    }
+    else if(input1.exp != input2.exp) {
+        result = ((input1.exp < input2.exp) ^ input1.sign) ? HF_ONE_NEG : HF_ONE_POS;
+    }
+    else if(input1.mant != input2.mant) {
+        result = ((input1.mant < input2.mant) ^ input1.sign) ? HF_ONE_NEG : HF_ONE_POS;
+    }
+    else if(input1.sign) {
+        result = HF_ZERO_NEG; //-0.0
+    }
+    //sinon result reste HF_ZERO_POS (égalité)
+
+    return result;
+}
+
+/**
+ * @brief Renvoie le minimum de deux demi-flottants (IEEE 754 - half precision)
+ *
+ * Compare deux demi-flottants et renvoie le plus petit au format IEEE 754.
+ * Conforme IEEE :
+ *  - NaN (quiet ou signaling) → retourne qNaN (aucune exception levée)
+ *  - min(+0,-0) = -0
+ *  - min(+Inf, valeur) = valeur
+ *  - min(-Inf, valeur) = -Inf
+ *
+ * @param hf1 Premier demi-flottant
+ * @param hf2 Second demi-flottant
+ * @return Le minimum au format demi-flottant IEEE 754
+ */
+uint16_t hf_min(uint16_t hf1, uint16_t hf2) {
+    uint16_t result = hf1; //valeur par défaut
+    half_float input1 = decompose_half(hf1);
+    half_float input2 = decompose_half(hf2);
+
+    if(is_nan(input1) || is_nan(input2)) {
+        result = HF_NAN; //qNaN
+    }
+    else if(is_zero(input1) && is_zero(input2)) {
+        result = HF_ZERO_NEG; //min(+0,-0) = -0
+    }
+    else if(input1.sign != input2.sign) {
+        result = input1.sign ? hf1 : hf2; //négatif < positif
+    }
+    else if(input1.exp != input2.exp) {
+        result = ((input1.exp < input2.exp) ^ input1.sign) ? hf1 : hf2; //ordre selon exp et signe
+    }
+    else if(input1.mant != input2.mant) {
+        result = ((input1.mant < input2.mant) ^ input1.sign) ? hf1 : hf2; //ordre selon mantisse et signe
+    }
+    else if(input1.sign) {
+        result = hf1; //préserve le signe négatif si égalité totale
+    }
+    //sinon result reste hf1 (+0 ou égalité parfaite)
+
+    return result;
+}
+
+/**
+ * @brief Renvoie le maximum de deux demi-flottants (IEEE 754 - half precision)
+ *
+ * Compare deux demi-flottants et renvoie le plus grand au format IEEE 754.
+ * Conforme IEEE :
+ *  - NaN (quiet ou signaling) → retourne qNaN (aucune exception levée)
+ *  - max(+0,-0) = +0
+ *  - max(+Inf, valeur) = +Inf
+ *  - max(-Inf, valeur) = valeur
+ *
+ * @param hf1 Premier demi-flottant
+ * @param hf2 Second demi-flottant
+ * @return Le maximum au format demi-flottant IEEE 754
+ */
+uint16_t hf_max(uint16_t hf1, uint16_t hf2) {
+    uint16_t result = hf1; //valeur par défaut
+    half_float input1 = decompose_half(hf1);
+    half_float input2 = decompose_half(hf2);
+
+    if(is_nan(input1) || is_nan(input2)) {
+        result = HF_NAN; //qNaN
+    }
+    else if(is_zero(input1) && is_zero(input2)) {
+        result = HF_ZERO_POS; //max(+0,-0) = +0
+    }
+    else if(input1.sign != input2.sign) {
+        result = input1.sign ? hf2 : hf1; //positif > négatif
+    }
+    else if(input1.exp != input2.exp) {
+        result = ((input1.exp > input2.exp) ^ input1.sign) ? hf1 : hf2; //ordre selon exp et signe
+    }
+    else if(input1.mant != input2.mant) {
+        result = ((input1.mant > input2.mant) ^ input1.sign) ? hf1 : hf2; //ordre selon mantisse et signe
+    }
+    else if(!input1.sign) {
+        result = hf1; //préserve le signe positif si égalité totale
+    }
+    //sinon result reste hf1 (-0 ou égalité parfaite)
+
+    return result;
+}
 
 /**
  * @brief Récupère la partie entière d'un demi-flottant
@@ -53,18 +192,27 @@ static void normalize_denormalized_mantissa(half_float *hf);
  */
 uint16_t hf_int(uint16_t hf) {
     half_float result = decompose_half(hf);
-
+    
     //Traitement uniquement pour les nombres non spéciaux
     if(!is_nan(result) && !is_infinity(result) && !is_zero(result)) {
-        //Normaliser la mantisse avec déclaration+affectation directe
-        uint32_t value = result.exp >= 0 ? (uint32_t)(result.mant << result.exp) : (uint32_t)(result.mant >> -result.exp);
-
-        //Convertir la valeur entière avec masquage des bits fractionnaires
-        result.mant = (int32_t)(value & ~((1U << (HF_MANT_BITS + HF_PRECISION_SHIFT)) - 1U));
-        result.exp = 0;
-        normalize_and_round(&result);
+        //Si l'exposant est négatif, la partie entière est 0
+        if(result.exp < 0) {
+            result.mant = 0;
+            result.exp = HF_EXP_MIN;
+        }
+        //Si l'exposant est >= 0, tronquer les bits fractionnaires
+        else if(result.exp < HF_MANT_BITS) {
+            //Nombre de bits fractionnaires à éliminer
+            int frac_bits = HF_MANT_BITS - result.exp;
+            
+            //Masque pour garder seulement les bits entiers
+            uint32_t mask = ~((1U << (frac_bits + HF_PRECISION_SHIFT)) - 1U);
+            result.mant = result.mant & mask;
+            normalize_and_round(&result);
+        }
+        //Si exp >= 10, le nombre est déjà entier (pas de bits fractionnaires)
     }
-
+    
     return compose_half(result);
 }
 
@@ -80,7 +228,7 @@ uint16_t hf_int(uint16_t hf) {
 uint16_t hf_abs(uint16_t hf) {
     //La valeur absolue est obtenue en mettant le bit de signe à 0
     //On utilise un masque pour conserver tous les bits sauf le bit de signe
-    return hf & (uint16_t)~(1U << HF_SIGN_BITS);
+    return hf & ~HF_MASK_SIGN;
 }
 
 /**
@@ -95,7 +243,7 @@ uint16_t hf_abs(uint16_t hf) {
 uint16_t hf_neg(uint16_t hf) {
     //L'opposé est obtenu en inversant le bit de signe
     //On utilise l'opération XOR avec 0x8000 pour inverser uniquement le bit de signe
-    return hf ^ (1 << HF_SIGN_BITS);
+    return hf ^ HF_MASK_SIGN;
 }
 
 /**
@@ -110,12 +258,13 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
 
+    result.sign = HF_ZERO_POS;
+    result.exp = HF_EXP_FULL;
+    result.mant = 1;
+
     //Gestion unifiée des NaN - propager le premier NaN rencontré
     if(is_nan(input1) || is_nan(input2)) {
-        half_float *nan_source = is_nan(input1) ? &input1 : &input2;
-        result.sign = nan_source->sign;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
+        result.sign = is_nan(input1) ? input1.sign : input2.sign;
     } else if(is_infinity(input1) || is_infinity(input2)) {
         //Gestion des cas infinis
         if(is_infinity(input1) && is_infinity(input2)) {
@@ -123,8 +272,6 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
             if(input1.sign != input2.sign) {
                 //Infini positif + Infini négatif = NaN négatif
                 result.sign = HF_ZERO_NEG;
-                result.exp = HF_EXP_FULL;
-                result.mant = 1;
             } else {
                 //Infini + Infini de même signe = Infini
                 result = input1;
@@ -133,11 +280,16 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
             //Un seul est infini - le résultat est cet infini
             result = is_infinity(input1) ? input1 : input2;
         }
+    } else if(is_zero(input1) && is_zero(input2)) {
+        //Cas spécial -0 + -0 = -0
+        result.sign = (input1.sign && input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
+        result.exp = 0;
+        result.mant = 0;
     } else {
-        //OPTIMISATION : Déclarations avec affectations directes pour réduire les opérations
+        //Addition normale
         int32_t sum;
         
-        //Addition normale - aligner les mantisses
+        //Aligner les mantisses
         align_mantissas(&input1, &input2);
         
         //Calcul avec mantisses signées combiné - pas de variables intermédiaires
@@ -146,18 +298,28 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
 
         //Déterminer signe et valeur absolue du résultat avec assignation directe
         result.exp = input1.exp;
+        result.mant = sum;
         if(sum < 0) {
             result.mant = -sum;
-            result.sign = 1 << HF_SIGN_BITS;
-        } else {
-            result.mant = sum;
-            result.sign = 0;
+            result.sign = HF_ZERO_NEG;
         }
-        
+
         normalize_and_round(&result);
     }
 
     return compose_half(result);
+}
+
+/**
+ * @brief Soustrait deux demi-flottants
+ *
+ * @param hf1 Premier demi-flottant
+ * @param hf2 Second demi-flottant (sera soustrait)
+ * @return Le résultat de la soustraction sous forme de demi-flottant
+ */
+uint16_t hf_sub(uint16_t hf1, uint16_t hf2) {
+    //La soustraction est équivalente à l'addition du négatif du second opérande
+    return hf_add(hf1, hf2 ^ HF_ZERO_NEG);
 }
 
 /**
@@ -223,7 +385,7 @@ uint16_t hf_div(uint16_t hf1, uint16_t hf2) {
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
     
-    //Initialisation par défaut : division normale
+    //Initialisation par défaut: division normale
     result.sign = input1.sign ^ input2.sign;
     result.exp = input1.exp - input2.exp;
     
@@ -259,9 +421,7 @@ uint16_t hf_div(uint16_t hf1, uint16_t hf2) {
         uint32_t dividend = input1.mant << (HF_MANT_BITS + HF_PRECISION_SHIFT);
 
         result.mant = dividend / input2.mant;
-        if(dividend % input2.mant) {
-            result.mant |= 1;
-        }
+        if(dividend % input2.mant) result.mant |= 1;
 
         normalize_and_round(&result);
     }
@@ -270,8 +430,52 @@ uint16_t hf_div(uint16_t hf1, uint16_t hf2) {
 }
 
 /**
+ * @brief Inverse un demi-flottant (calcule 1/x)
+ *
+ * @param hf Le demi-flottant à inverser
+ * @return L'inverse du demi-flottant (1/x)
+ */
+uint16_t hf_inv(uint16_t hf) {
+    half_float result;
+    half_float input = decompose_half(hf);
+    
+    //Gestion des cas spéciaux
+    if(is_nan(input)) {
+        //NaN -> propager le NaN
+        result.sign = input.sign;
+        result.exp = HF_EXP_FULL;
+        result.mant = 1;
+    } else if(is_infinity(input)) {
+        //1/Inf = 0 (avec le signe)
+        result.sign = input.sign;
+        result.exp = -HF_EXP_BIAS;
+        result.mant = 0;
+    } else if(is_zero(input)) {
+        //1/0 = Inf (avec le signe)
+        result.sign = input.sign;
+        result.exp = HF_EXP_FULL;
+        result.mant = 0;
+    } else {
+        //Créer 1.0 avec bit implicite: mantisse = 1.0 en format étendu
+        //input.mant contient déjà le bit implicite, donc dividend doit aussi
+        uint32_t dividend = (1U << (HF_MANT_BITS + HF_PRECISION_SHIFT)) << (HF_MANT_BITS + HF_PRECISION_SHIFT);
+        
+        result.sign = input.sign;
+        //Pour 1/x avec exposant débiaisé: exp_result = -exp_input
+        result.exp = -input.exp;
+
+        //Division arithmétique: 1.0 / input
+        result.mant = dividend / input.mant;
+        
+        normalize_and_round(&result);
+    }
+    
+    return compose_half(result);
+}
+
+/**
  * @brief Calcule la racine carrée d'un demi-flottant
- * 
+ *
  * Cette fonction utilise un algorithme de décalage optimisé pour calculer
  * la racine carrée d'un nombre représenté en demi-flottant (half-float).
  * Elle gère les cas spéciaux tels que NaN, l'infini, et zéro, et ajuste l'exposant
@@ -282,52 +486,118 @@ uint16_t hf_div(uint16_t hf1, uint16_t hf2) {
  */
 uint16_t hf_sqrt(uint16_t hf) {
     half_float result;
-    half_float input = decompose_half(hf);
+    half_float input  = decompose_half(hf);
     
-    //Initialisation par défaut : calcul arithmétique normal
-    result.sign = HF_ZERO_POS;  //sqrt(x) >= 0 pour x >= 0
-    result.exp = 0;
+    //Initialisation par défaut: NaN positif (gère NaN et -x automatiquement)
+    result.sign = HF_ZERO_POS;
+    result.exp  = HF_EXP_FULL;
+    result.mant = 1;
     
-    //Gestion des cas spéciaux - priorité absolue
+    //Cas spéciaux IEEE 754
     if(is_zero(input)) {
-        result = input;  //Préserver sqrt(-0) = -0
-    } else if(is_nan(input) || input.sign) {
-        //NaN ou nombres négatifs = NaN
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
+        //sqrt(+/-0) -> +/-0
         result.sign = input.sign;
-    } else if(is_infinity(input)) {
-        //sqrt(+inf) = +inf
-        result.exp = HF_EXP_FULL;
+        result.exp  = input.exp;
         result.mant = 0;
-    } else {
-        //Calcul arithmétique par algorithme de décalage avec déclarations+affectations directes
+    }
+    else if(is_infinity(input) && !input.sign) {
+        //sqrt(+inf) -> +inf
+        result.mant = 0;  //exp déjà FULL, sign déjà positif
+    }
+    else if(!input.sign && !is_infinity(input) && !is_nan(input)) {
+        //Calcul arithmétique normal (x > 0 fini, non-zéro déjà exclu)
         int loop = 16;
-        uint32_t sqrt = 0;
-        uint32_t quot = 0;
-        uint32_t value = (uint32_t)(input.mant << 1);
+        uint32_t root = 0;
+        uint32_t rest = 0;
+        uint32_t value = (uint32_t)(input.mant << 15);
         
-        //Normaliser la mantisse pour avoir un exposant effectif de 0
-        value = input.exp >= 0 ? value << input.exp : value >> -input.exp;
+        //Exposant impair: ajustement de l'exposant à pair + mantisse
+        if(input.exp & 1) {
+            value <<= 1;
+            input.exp--;
+        }
         
         //Algorithme de racine carrée par décalage
         while(--loop >= 0) {
-            quot = (quot << 2) + ((value >> 30) & 3);
-            sqrt <<= 1;
-            value <<= 2;
-
-            if(quot >= sqrt + 1) {
-                quot -= ++sqrt;
-                sqrt++;
+            rest = (rest << 2) + ((value >> (loop * 2)) & 3);
+            root <<= 1;
+            if(rest >= (root << 1) + 1) {
+                rest -= (root << 1) + 1;
+                root++;
             }
         }
-
-        //Ajuster le résultat avec décalage optimisé
-        result.mant = (int32_t)(sqrt << 6);
-
-        normalize_and_round(&result);
+        
+        if(root > 0) {
+            result.exp  = input.exp / 2;
+            result.mant = (int32_t)root;
+            normalize_and_round(&result);
+        }
     }
+    //NaN et -x (incluant -inf) -> NaN: déjà correct par l'initialisation
     
+    return compose_half(result);
+}
+
+/**
+ * @brief Calcule la racine carrée inverse d'un demi-flottant (1/sqrt(x))
+ *
+ * Cette fonction calcule directement l'inverse de la racine carrée d'un nombre
+ * représenté en demi-flottant (half-float). Elle utilise une approche optimisée
+ * avec gestion simplifiée des cas IEEE 754.
+ *
+ * @param hf Le demi-flottant dont on veut calculer 1/sqrt(x)
+ * @return Le résultat de 1/sqrt(x) sous forme de demi-flottant
+ */
+uint16_t hf_rsqrt(uint16_t hf) {
+    half_float result;
+    half_float input  = decompose_half(hf);
+
+    //Initialisation par défaut: +inf (gère automatiquement +/-0)
+    result.sign = HF_ZERO_POS;
+    result.exp  = HF_EXP_FULL;
+    result.mant = 0;
+   
+    //Cas spéciaux IEEE 754
+    if(is_nan(input) || (input.sign && !is_zero(input))) {
+        //NaN ou x<0 (hors -0, incluant -inf) -> NaN
+        result.mant = 1;
+    }
+    else if(is_infinity(input)) {
+        //rsqrt(+inf) -> +0
+        result.exp  = 0;
+    }
+    else if(!is_zero(input)) {
+        //Calcul arithmétique normal: 1/sqrt(x)
+        int loop = 16;
+        uint32_t root = 0;
+        uint32_t rest = 0;
+        uint32_t value = (uint32_t)(input.mant << 15);
+       
+        //Exposant impair: ajustement de l'exposant à pair + mantisse
+        if(input.exp & 1) {
+            value <<= 1;
+            input.exp--;
+        }
+       
+        //Algorithme de racine carrée par décalage
+        while(--loop >= 0) {
+            rest = (rest << 2) + ((value >> (loop * 2)) & 3);
+            root <<= 1;
+            if(rest >= (root << 1) + 1) {
+                rest -= (root << 1) + 1;
+                root++;
+            }
+        }
+       
+        if(root > 0) {
+            uint32_t one = 1U << 31;
+            result.mant = (int32_t)(one / root);
+            result.exp  = -(input.exp / 2) - 1;
+            normalize_and_round(&result);
+        }
+    }
+    //rsqrt(+/-0) -> +inf: déjà correct par l'initialisation
+   
     return compose_half(result);
 }
 
@@ -346,7 +616,7 @@ uint16_t hf_ln(uint16_t hf) {
     half_float input = decompose_half(hf);
 
     //Initialisation par défaut - évite le branchement else
-    result.sign = 0;
+    result.sign = HF_ZERO_POS;
 
     //Gestion des cas spéciaux
     if(is_zero(input)) {
@@ -363,7 +633,7 @@ uint16_t hf_ln(uint16_t hf) {
         //ln(+inf) = +inf
         result = input;
     } else {
-        //Calcul normal : ln(x) = exp*ln(2) + ln_table[mantisse]
+        //Calcul normal: ln(x) = exp*ln(2) + ln_table[mantisse]
         int idx;
         
         //Normaliser les nombres dénormalisés pour avoir le bit implicite et un exposant valide
@@ -410,7 +680,7 @@ uint16_t hf_exp(uint16_t hf) {
         result.exp = HF_EXP_FULL;
         result.mant = 1;
     } else {
-        result.sign = 0; //L'exponentielle est toujours positive pour les cas non-NaN
+        result.sign = HF_ZERO_POS; //L'exponentielle est toujours positive pour les cas non-NaN
         
         if(is_infinity(input)) {
             result.mant = 0;
@@ -432,7 +702,7 @@ uint16_t hf_exp(uint16_t hf) {
                 //Ajustement selon l'exposant pour obtenir la vraie valeur
                 x_fixed = (input.exp >= 0) ? (x_fixed << input.exp) : (x_fixed >> -input.exp);
                 
-                //Réduction à [0, ln(2)] : k = floor(x/ln(2)), r = x - k*ln(2)
+                //Réduction à [0, ln(2)]: k = floor(x/ln(2)), r = x - k*ln(2)
                 k_exp = x_fixed / LNI_2;
                 r_fixed = x_fixed - k_exp * LNI_2;
                 
@@ -476,12 +746,12 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
     half_float inputbase = decompose_half(hfbase);
     half_float inputexp = decompose_half(hfexp);
     
-    //Initialisation par défaut : résultat = 1.0 (cas IEEE 754 majoritaires)
-    result.sign = 0;
+    //Initialisation par défaut: résultat = 1.0 (cas IEEE 754 majoritaires)
+    result.sign = HF_ZERO_POS;
     result.exp = 0;
     result.mant = 1 << (HF_MANT_BITS + HF_PRECISION_SHIFT);
     
-    //Cas spéciaux IEEE 754 : base = 1.0 ou exposant = 0
+    //Cas spéciaux IEEE 754: base = 1.0 ou exposant = 0
     if((inputbase.exp == 0 && inputbase.mant == (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT)) && inputbase.sign == 0) ||
        is_zero(inputexp)) {
         //1^(n'importe quoi) = 1 ou N'importe quoi^0 = 1 - garder l'initialisation
@@ -521,7 +791,7 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
                 result.mant = 0;
                 if(inputbase.sign && inputexp.exp >= 0) {
                     int32_t int_part = inputexp.mant >> (HF_MANT_BITS + HF_PRECISION_SHIFT - inputexp.exp);
-                    result.sign = (int_part & 1) ? 0x8000 : 0;
+                    result.sign = (int_part & 1) ? HF_ZERO_NEG : HF_ZERO_POS;
                 }
             }
         } else {
@@ -530,15 +800,15 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
             uint16_t one_hf = (0 << HF_SIGN_BITS) | ((HF_EXP_BIAS) << HF_MANT_BITS) | 0; //1.0 en half-float
             
             if(abs_base > one_hf) {
-                //|x| > 1 : exp=+inf -> +inf, exp=-inf -> 0
+                //|x| > 1: exp=+inf -> +inf, exp=-inf -> 0
                 result.exp = inputexp.sign ? -HF_EXP_BIAS : HF_EXP_FULL;
                 result.mant = 0;
             } else if(abs_base < one_hf) {
-                //|x| < 1 : exp=+inf -> 0, exp=-inf -> +inf
+                //|x| < 1: exp=+inf -> 0, exp=-inf -> +inf
                 result.exp = inputexp.sign ? HF_EXP_FULL : -HF_EXP_BIAS;
                 result.mant = 0;
             }
-            //|x| = 1 : garder l'initialisation result = 1
+            //|x| = 1: garder l'initialisation result = 1
         }
     } else if(inputexp.exp == 0 && inputexp.mant == (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT)) && inputexp.sign == 0) {
         //x^1 = x (cas spécial optimisé)
@@ -549,7 +819,7 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
         result.mant = 1;
         result.sign = inputbase.sign;
     } else {
-        //OPTIMISATION : Algorithme direct inspiré de hf_ln et hf_exp
+        //OPTIMISATION: Algorithme direct inspiré de hf_ln et hf_exp
         //Déclarations avec affectations directes pour réduire les opérations
         int result_negative = 0;
         int32_t ln_base_fixed, exp_fixed, exp_ln_fixed, k_exp, r_fixed;
@@ -604,7 +874,7 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
         }
         
         result.exp = k_exp;
-        result.sign = 0;
+        result.sign = HF_ZERO_POS;
         
         //Inversion si exposant négatif avec constante optimisée
         if(result_negative && result.mant != 0) {
@@ -659,8 +929,8 @@ uint16_t hf_cos(uint16_t hfangle) {
  * @brief Calcule la tangente d'un angle en demi-précision.
  *
  * Cette fonction utilise un système dual-table optimisé avec formats Q adaptés :
- * - Table LOW Q13 [0°, 75°] : Précision maximale (step=0.0002441)
- * - Table HIGH Q6 [75°, 90°] : Plage maximale (max=1024, saturation 0.4%)
+ * - Table LOW Q13 [0°, 75°]: Précision maximale (step=0.0002441)
+ * - Table HIGH Q6 [75°, 90°]: Plage maximale (max=1024, saturation 0.4%)
  * 
  * Économie mémoire: 75% vs table unique (1028 vs 4100 bytes)
  * Amélioration précision: 1.47x vs approche Q11/Q8
@@ -672,7 +942,7 @@ uint16_t hf_tan(uint16_t hfangle) {
     half_float result;
     half_float angle_hf = decompose_half(hfangle);
 
-    result.sign = 0;
+    result.sign = HF_ZERO_POS;
     result.mant = 0;
 
     if(is_nan(angle_hf) || is_infinity(angle_hf)) {
@@ -681,7 +951,7 @@ uint16_t hf_tan(uint16_t hfangle) {
             result.sign = angle_hf.sign;
         } else {
             //Pour les infinis, retourner NaN négatif selon la convention de la bibliothèque
-            result.sign = 0x8000; //NaN négatif pour tan(+/-inf)
+            result.sign = HF_ZERO_NEG; //NaN négatif pour tan(+/-inf)
         }
         result.exp = HF_EXP_FULL;
         result.mant = 1;
@@ -730,12 +1000,12 @@ uint16_t hf_tan(uint16_t hfangle) {
         
         //Gestion overflow et signe final
         if(result.mant > (1 << 26) || result.mant < -(1 << 26)) {
-            result.sign = result.mant < 0 ? 0x8000 : 0;
+            result.sign = result.mant < 0 ? HF_ZERO_NEG : HF_ZERO_POS;
             result.mant = 0;
             result.exp = HF_EXP_FULL;
         } else if(result.mant < 0) {
             //Gestion du signe - conversion en valeur absolue
-            result.sign = 0x8000;
+            result.sign = HF_ZERO_NEG;
             result.mant = -result.mant;
         }
         //result.sign reste à 0 par défaut si result.mant >= 0
@@ -748,6 +1018,27 @@ uint16_t hf_tan(uint16_t hfangle) {
 }
 
 /**
+ * @brief Calcule l'arc sinus d'un demi-flottant
+ *
+ * @param hf La valeur dont on cherche l'arc sinus (doit être dans [-1, 1])
+ * @return L'angle en radians dans [-pi/2, pi/2]
+ */
+
+uint16_t hf_asin(uint16_t hf) {
+    return asinus_shiftable(hf, 0UL);
+}
+
+/**
+ * @brief Calcule l'arc cosinus d'un demi-flottant
+ * 
+ * @param hf La valeur dont on cherche l'arc cosinus (doit être dans [-1, 1])
+ * @return L'angle en radians dans [0, pi]
+ */
+uint16_t hf_acos(uint16_t hf) {
+    return asinus_shiftable(hf, ACOS_SHIFT);
+}
+
+/**
  * @brief Réduit un angle en radians (format virgule fixe) à un entier non signé 16 bits
  * 
  * Cette fonction prend un angle en radians représenté en format virgule fixe (1.31)
@@ -756,7 +1047,7 @@ uint16_t hf_tan(uint16_t hfangle) {
  * maintenant une précision constante de 1/65536.
  *
  * @param angle_rad_fixed Angle en radians en format virgule fixe (1.31)
- * @param fact Facteur de réduction : 0 pour réduction à 2pi, 1 pour réduction à pi
+ * @param fact Facteur de réduction: 0 pour réduction à 2pi, 1 pour réduction à pi
  * @return Angle réduit sur 16 bits, représentant :
  *         - [0, 2pi] avec une précision de 1/65536 si fact = 0
  *         - [0, pi] avec une précision de 1/65536 si fact = 1
@@ -791,8 +1082,8 @@ static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift) {
     half_float result;
     half_float angle_hf = decompose_half(hfangle);
 
-    //Initialisation par défaut : calcul trigonométrique normal
-    result.sign = 0;
+    //Initialisation par défaut: calcul trigonométrique normal
+    result.sign = HF_ZERO_POS;
     result.exp = 0;
 
     //Gestion unifiée des cas spéciaux
@@ -803,7 +1094,7 @@ static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift) {
         result.mant = 1;
     } else if(is_infinity(angle_hf)) {
         //Pour les infinis, retourner NaN négatif selon la convention
-        result.sign = 0x8000;
+        result.sign = HF_ZERO_NEG;
         result.exp = HF_EXP_FULL;
         result.mant = 1;
     } else {
@@ -837,9 +1128,9 @@ static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift) {
         result.mant += (((int32_t)sin_table[idx1] - result.mant) * (norm & 0xf) + 0x8) >> 4;
 
         //Gestion du signe pour les quadrants négatifs (2 et 3)
-        if(norm & 0x8000) result.mant = -result.mant;
+        if(norm & HF_MASK_SIGN) result.mant = -result.mant;
         if(result.mant < 0) {
-            result.sign = 0x8000;
+            result.sign = HF_ZERO_NEG;
             result.mant = -result.mant;
         }
 
@@ -850,21 +1141,71 @@ static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift) {
     return compose_half(result);
 }
 
+
 /**
- * @brief Normalise une mantisse dénormalisée
- * 
- * Cette fonction normalise une mantisse dénormalisée en décalant la mantisse
- * vers la gauche et en décrémentant l'exposant jusqu'à ce que la mantisse
- * soit normalisée (bit implicite défini).
+ * @brief Calcule l'arc sinus ou l'arc cosinus avec ajustement de phase
  *
- * @param hf Pointeur vers la structure half_float à normaliser
+ * Cette fonction calcule asin(x) ou acos(x) en utilisant la même table.
+ * Pour acos: acos(x) = pi/2 - asin(x) pour x >= 0, pi/2 + asin(|x|) pour x < 0
+ *
+ * @param hf La valeur en format demi-précision (doit être dans [-1, 1])
+ * @param shift Décalage à appliquer (0 pour asin, pi/2 en Q15 pour acos)
+ * @return L'angle en radians (asin: [-pi/2, pi/2], acos: [0, pi])
  */
-static void normalize_denormalized_mantissa(half_float *hf) {
-    if(hf->exp == -HF_EXP_BIAS) {
-        hf->exp++;
-        while(hf->mant < (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT))) {
-            hf->mant <<= 1;
-            hf->exp--;
+static uint16_t asinus_shiftable(uint16_t hf, uint32_t shift) {
+    half_float result = {0, 0, 0};
+    half_float input = decompose_half(hf);
+   
+    //Cas spéciaux: NaN
+    if(is_nan(input)) {
+        result.sign = input.sign;
+        result.exp = HF_EXP_FULL;
+        result.mant = 1;
+    }
+    //Cas spéciaux: Infinity (hors domaine)
+    else if(is_infinity(input)) {
+        result.sign = HF_ZERO_NEG;
+        result.exp = HF_EXP_FULL;
+        result.mant = 1;
+    }
+    //Calcul normal
+    else {
+        int idx0, idx1, frac;
+
+        //Normaliser l'entrée
+        int32_t norm = input.mant;
+        norm = input.exp >= 0 ? norm << input.exp : norm >> -input.exp;
+       
+        //Vérifier le domaine: |x| <= 1.0
+        if(norm > (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT))) {
+            result.sign = HF_ZERO_NEG;
+            result.exp = HF_EXP_FULL;
+            result.mant = 1;
+        }
+        //Calculer via la table asin
+        else {
+            const int bits = HF_MANT_BITS + HF_PRECISION_SHIFT - ASIN_TABLE_BITS;
+
+            idx0 = norm >> bits;
+            idx1 = idx0 + 1;
+            if(idx1 > ASIN_TABLE_SIZE) idx1 = ASIN_TABLE_SIZE;
+           
+            frac = norm & ((1 << (bits)) - 1);
+           
+            //Interpolation linéaire
+            result.mant = (int32_t)asin_table[idx0];
+            result.mant += (((int32_t)asin_table[idx1] - result.mant) * frac + (1 << ((bits) - 1))) >> (bits);
+           
+            //Appliquer le shift pour acos, ou le signe pour asin
+            if(shift) {
+                result.mant = input.sign ? shift + result.mant : shift - result.mant;
+            } else {
+                result.sign = input.sign;
+            }
+           
+            normalize_and_round(&result);
         }
     }
+   
+    return compose_half(result);
 }

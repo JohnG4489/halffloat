@@ -16,23 +16,21 @@
 #include "hf_precalc.h"
 #include <math.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 //Déclarations des fonctions publiques
 void fill_sin_table(void);
+void fill_asin_table(void);
 void fill_ln_table(void);
 void fill_exp_table(void);
 void fill_tan_tables_dual(void);       //Tables duales optimales Q13/Q6
 
 uint16_t sin_table[SIN_TABLE_SIZE+1];
+uint16_t asin_table[ASIN_TABLE_SIZE + 1];
 uint16_t ln_table[LN_TABLE_SIZE];
 uint16_t exp_table[EXP_TABLE_SIZE+1];
 
-// *** TABLES DUALES OPTIMISÉES Q13/Q6 ***
-uint16_t tan_table_low[TAN_DUAL_TABLE_SIZE+1];   // [0°, 75°] Q13 format (16-bit)
-uint16_t tan_table_high[TAN_DUAL_TABLE_SIZE+1];  // [75°, 90°] Q6 format (16-bit)
+//TABLES DUALES OPTIMISÉES Q13/Q6
+uint16_t tan_table_low[TAN_DUAL_TABLE_SIZE+1];   //[0°, 75°] Q13 format (16-bit)
+uint16_t tan_table_high[TAN_DUAL_TABLE_SIZE+1];  //[75°, 90°] Q6 format (16-bit)
 
 /**
  * @brief Remplit la table de sinus
@@ -51,6 +49,26 @@ void fill_sin_table() {
         double angle = (M_PI / 2) * i / SIN_TABLE_SIZE;
         double sin_val = sin(angle);
         sin_table[i] = (uint16_t)(uint32_t)(sin_val * 32768.0 + 0.5); //Conversion en format fixe Q15
+    }
+}
+
+/**
+ * @brief Remplit la table d'arc sinus
+ *
+ * Cette fonction génère une table de valeurs d'arc sinus précalculées.
+ * Les valeurs sont converties en format virgule fixe Q15 pour une
+ * utilisation efficace dans les calculs de demi-précision.
+ *
+ * La table couvre l'intervalle [0, 1] avec ASIN_TABLE_SIZE+1 points,
+ * permettant une interpolation linéaire précise.
+ * Les résultats sont dans l'intervalle [0, pi/2].
+ */
+void fill_asin_table(void) {
+    int i;
+    for(i = 0; i <= ASIN_TABLE_SIZE; i++) {
+        double x = (double)i / ASIN_TABLE_SIZE;
+        double asin_val = asin(x);
+        asin_table[i] = (uint16_t)(uint32_t)(asin_val * 32768.0 + 0.5); //Conversion en format fixe Q15
     }
 }
 
@@ -113,12 +131,12 @@ void fill_exp_table() {
 void fill_tan_tables_dual() {
     int i;
     
-    // *** TABLE LOW Q13: [0°, 75°] = [0, 5pi/12] ***
+    //TABLE LOW Q13: [0°, 75°] = [0, 5pi/12]
     for(i = 0; i <= TAN_DUAL_TABLE_SIZE; i++) {
         double angle = TAN_SWITCH_RADIANS * (double)i / TAN_DUAL_TABLE_SIZE;
         double tan_val = tan(angle);
         
-        //Protection Q13 : max = 8.0 (marge 2.1x pour tan(75°)=3.73)
+        //Protection Q13: max = 8.0 (marge 2.1x pour tan(75°)=3.73)
         if(tan_val > 8.0) {
             tan_val = 8.0;
         }
@@ -126,12 +144,12 @@ void fill_tan_tables_dual() {
         tan_table_low[i] = (uint16_t)(tan_val * 8192.0 + 0.5);  //Q13 format
     }
     
-    // *** TABLE HIGH Q6: [75°, 90°] = [5pi/12, pi/2] ***
+    //TABLE HIGH Q6: [75°, 90°] = [5pi/12, pi/2]
     for(i = 0; i <= TAN_DUAL_TABLE_SIZE; i++) {
         double angle = TAN_SWITCH_RADIANS + (M_PI/2 - TAN_SWITCH_RADIANS) * (double)i / TAN_DUAL_TABLE_SIZE;
         double tan_val = tan(angle);
         
-        //Protection Q6 : max = 1024 (jusqu'à tan(89.94°), saturation 0.4%)
+        //Protection Q6: max = 1024 (jusqu'à tan(89.94°), saturation 0.4%)
         if(tan_val > 1024.0) {
             tan_val = 1024.0;
         }

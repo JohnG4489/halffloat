@@ -14,8 +14,12 @@
 
 #ifndef HF_LIB_H
 #define HF_LIB_H
-#include <stdint.h>
 #include "hf_common.h"
+
+//Fonctions de comparaison
+uint16_t hf_cmp(uint16_t hf1, uint16_t hf2);
+uint16_t hf_min(uint16_t hf1, uint16_t hf2);
+uint16_t hf_max(uint16_t hf1, uint16_t hf2);
 
 //Fonctions mathématiques de base
 uint16_t hf_int(uint16_t hf);
@@ -23,19 +27,24 @@ uint16_t hf_abs(uint16_t hf);
 uint16_t hf_neg(uint16_t hf);
 
 //Opérations arithmétiques
-uint16_t hf_add(uint16_t float1, uint16_t float2);
+uint16_t hf_add(uint16_t hf1, uint16_t hf2);
+uint16_t hf_sub(uint16_t hf1, uint16_t hf2);
 uint16_t hf_mul(uint16_t hf1, uint16_t hf2);
 uint16_t hf_div(uint16_t hf1, uint16_t hf2);
+uint16_t hf_inv(uint16_t hf);
 uint16_t hf_sqrt(uint16_t hf);
+uint16_t hf_rsqrt(uint16_t hf);
 
 //Fonctions transcendantes
 uint16_t hf_ln(uint16_t hf);
 uint16_t hf_exp(uint16_t hf);
-uint16_t hf_pow(uint16_t base, uint16_t exp);
+uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp);
 
 //Fonctions trigonométriques
-uint16_t hf_sin(uint16_t angle);
-uint16_t hf_cos(uint16_t angle);
-uint16_t hf_tan(uint16_t angle);
+uint16_t hf_sin(uint16_t hfangle);
+uint16_t hf_cos(uint16_t hfangle);
+uint16_t hf_tan(uint16_t hfangle);
+uint16_t hf_asin(uint16_t hf);
+uint16_t hf_acos(uint16_t hf);
 
 #endif //HF_LIB_H

@@ -18,21 +18,15 @@
 #include "hf_lib.h"
 #include <math.h>
 
-#ifndef INFINITY
-#define INFINITY (1.0f/0.0f)
-#endif
-
-#ifndef NAN
-#define NAN (0.0f/0.0f)
-#endif
-
 //Prototypes des fonctions
 void debug_abs(void);
 void debug_neg(void);
 void debug_add(void);
 void debug_mul(void);
 void debug_div(void);
+void debug_inv(void);
 void debug_sqrt(void);
+void debug_rsqrt(void);
 void debug_pow(void);
 void debug_exp(void);
 void debug_int(void);
@@ -40,6 +34,8 @@ void debug_ln(void);
 void debug_sin(void);
 void debug_cos(void);
 void debug_tan(void);
+void debug_asin(void);
+void debug_acos(void);
 void debug_denormal_values(void);
 void debug_mathematical_identities(void);
 void debug_ieee754_edge_cases(void);
@@ -48,9 +44,10 @@ void debug_comparative_accuracy(void);
 void debug_boundary_conditions(void);
 void debug_special_constants(void);
 void debug_inverse_functions(void);
+void debug_rsqrt_comparison(void);
 
 //Fonction utilitaire locale
-static void print_formatted_table(const char *title, const char **headers, int num_cols, float data[][5], int num_rows);
+static void print_formatted_table(const char *title, const char **headers, int num_cols, float data[][8], int num_rows);
 
 /**
  * @brief Fonction de débogage pour tester la fonction hf_abs avec divers cas de test
@@ -78,7 +75,7 @@ void debug_abs(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[30][5]; /* Tableau statique étendu pour tous les tests */
+    float results[30][8]; /* Tableau statique étendu pour tous les tests */
     const char *headers[] = {"Value", "Result (hf_abs)", "Result (fabsf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -128,7 +125,7 @@ void debug_neg(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[30][5]; /* Tableau statique étendu pour tous les tests */
+    float results[30][8]; /* Tableau statique étendu pour tous les tests */
     const char *headers[] = {"Value", "Result (hf_neg)", "Result (-value)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -186,7 +183,7 @@ void debug_add(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Value1", "Value2", "Result (my_add)", "Result (std::add)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -249,7 +246,7 @@ void debug_mul(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Value1", "Value2", "Result (my_mul)", "Result (std::mul)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -316,7 +313,7 @@ void debug_div(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Value1", "Value2", "Result (my_div)", "Result (std::div)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -346,6 +343,62 @@ void debug_div(void) {
 }
 
 /**
+ * @brief Fonction de débogage pour tester la fonction hf_inv avec divers cas de test
+ *
+ * Cette fonction teste l'inversion de demi-flottants avec des cas incluant
+ * les nombres normaux, dénormalisés, les cas spéciaux IEEE 754,
+ * et compare les résultats avec l'inversion standard en float.
+ */
+void debug_inv(void) {
+    float test_cases[] = {
+        //Inversions simples
+        1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 0.5f, 0.25f, 0.125f, 0.0625f,
+        //Cas spéciaux IEEE 754
+        0.0f, -0.0f, -1.0f, half_to_float(HF_INFINITY_POS),
+        half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN),
+        //Grandes valeurs (proche overflow après inversion)
+        65504.0f, 32768.0f, 10000.0f, 1000.0f, 100.0f,
+        -65504.0f, -32768.0f, -10000.0f, -1000.0f, -100.0f,
+        //Petites valeurs (risque de débordement après inversion)
+        0.0001f, 0.00001f, 0.000001f, 6e-8f, 1e-7f, 1e-6f,
+        -0.0001f, -0.00001f, -0.000001f, -6e-8f, -1e-7f,
+        //Valeurs dénormalisées et très petites
+        5.96e-8f, -5.96e-8f, 1e-10f, 1e-15f,
+        //Cas edge et précision
+        0.999999f, 1.000001f, 3.0f, 7.0f, 10.0f,
+        //Valeurs fractionnaires
+        0.1f, 0.01f, 0.001f, 0.0001f,
+        //Valeurs négatives
+        -2.0f, -4.0f, -0.5f, -0.25f, -10.0f, -100.0f
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+
+    //Préparer les données pour le tableau formaté
+    float results[100][8]; //Tableau statique suffisant pour tous les tests
+    const char *headers[] = {"Value", "Result (my_inv)", "Result (1.0/x)", "Difference"};
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_inv(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = 1.0f / half_to_float(value_half);
+        float diff = fabsf(result_float - std_result);
+
+        //Stocker les résultats dans le tableau
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+    
+    //Afficher le tableau formaté
+    print_formatted_table("### HF_INV", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
  * @brief Fonction de débogage pour tester la fonction hf_sqrt avec divers cas de test
  * 
  * Cette fonction teste la racine carrée de demi-flottants incluant les nombres
@@ -370,7 +423,7 @@ void debug_sqrt(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests étendus */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
     const char *headers[] = {"Value", "Result (my_sqrt)", "Result (std::sqrt)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -392,6 +445,99 @@ void debug_sqrt(void) {
     /* Afficher le tableau formaté */
     print_formatted_table("### HF_SQRT", headers, 4, results, num_tests);
 
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_rsqrt avec divers cas de test
+ *
+ * Cette fonction teste la racine carrée inverse de demi-flottants incluant les nombres
+ * positifs, négatifs (qui doivent donner NaN), zéro (qui doit donner l'infini), 
+ * infini et NaN, et compare les résultats avec 1/sqrt() standard.
+ */
+void debug_rsqrt(void) {
+    float test_cases[] = {
+        //Valeurs classiques
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 16.0f,
+        
+        //Cas spéciaux IEEE 754 (déjà présents)
+        0.0f, -0.0f, 0.25f, -1.0f, 
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), 
+        half_to_float(HF_NAN),
+        
+        //Valeurs dénormalisées et petites
+        0.000061035f, 5.96e-8f, 1e-10f,
+        
+        //Valeurs limites du half-float
+        65504.0f,      //Max half-float normal
+        6.10e-5f,      //Min half-float normal (environ 2^-14)
+        6.0e-8f,       //Valeur dénormalisée
+        5.96e-8f,      //Plus petite valeur dénormalisée non-nulle
+        
+        //Puissances de 2 (doivent être exactes)
+        0.0625f,       //2^-4 -> rsqrt = 4
+        0.125f,        //2^-3 -> rsqrt = 2*sqrt(2)
+        0.5f,          //2^-1 -> rsqrt = sqrt(2)
+        1.0f,          //2^0  -> rsqrt = 1
+        4.0f,          //2^2  -> rsqrt = 0.5
+        16.0f,         //2^4  -> rsqrt = 0.25
+        64.0f,         //2^6  -> rsqrt = 0.125
+        256.0f,        //2^8  -> rsqrt = 0.0625
+        1024.0f,       //2^10 -> rsqrt = 0.03125
+        
+        //Valeurs proches de 1 (test précision)
+        0.99f, 0.999f, 0.9999f,
+        1.001f, 1.01f, 1.1f,
+        
+        //AJOUTS: Nombres négatifs variés
+        -0.5f, -2.0f, -100.0f,
+        
+        //Grandes valeurs
+        100.0f, 10000.0f,
+        
+        //Valeurs fractionnaires
+        0.1f, 0.01f, 0.001f, 0.0001f,
+        
+        //Valeurs intermédiaires
+        2.0f, 3.0f
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+   
+    float results[50][8];
+    const char *headers[] = {"Value", "Result (my_rsqrt)", "Result (1/std::sqrt)", "Difference"};
+   
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_rsqrt(value_half);
+        float result_float = half_to_float(result_half);
+       
+        //Calcul de référence: 1/sqrt(x)
+        float value_converted = half_to_float(value_half);
+        float std_result, diff;
+        
+        if(isnan(value_converted)) {
+            std_result = NAN;
+        } else if(isinf(value_converted)) {
+            std_result = (value_converted > 0.0f) ? 0.0f : NAN;
+        } else if(value_converted == 0.0f) {
+            std_result = INFINITY;
+        } else if(value_converted < 0.0f) {
+            std_result = NAN;
+        } else {
+            std_result = 1.0f / sqrtf(value_converted);
+        }
+        
+        diff = fabsf(result_float - std_result);
+       
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+   
+    print_formatted_table("### HF_RSQRT", headers, 4, results, num_tests);
     printf("\n");
 }
 
@@ -439,7 +585,7 @@ void debug_pow(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[70][5]; /* Tableau statique étendu pour tous les tests */
+    float results[70][8]; /* Tableau statique étendu pour tous les tests */
     const char *headers[] = {"Base", "Exp", "Result (my_pow)", "Result (std::pow)", "Difference"};
     
     for(i = 0; i < num_tests; i++) {
@@ -499,7 +645,7 @@ void debug_exp(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests étendus */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
     const char *headers[] = {"Value", "Result (my_exp)", "Result (std::exp)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -569,7 +715,7 @@ void debug_int(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests étendus */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
     const char *headers[] = {"Value", "Result (my_int)", "Result (std::int)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -625,7 +771,7 @@ void debug_ln(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[50][5]; /* Tableau statique suffisant pour tous les tests étendus */
+    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
     const char *headers[] = {"Value", "Result (my_ln)", "Result (std::ln)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -674,7 +820,7 @@ void debug_sin(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[25][5]; /* Tableau statique suffisant pour tous les tests */
+    float results[25][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Angle (rad)", "Result (hf_sin)", "Result (sinf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -723,7 +869,7 @@ void debug_cos(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[25][5]; /* Tableau statique suffisant pour tous les tests */
+    float results[25][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Angle (rad)", "Result (hf_cos)", "Result (cosf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -776,7 +922,7 @@ void debug_tan(void) {
     int i;
 
     /* Préparer les données pour le tableau formaté */
-    float results[70][5]; /* Tableau statique suffisant pour tous les tests */
+    float results[70][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Angle (rad)", "Result (hf_tan)", "Result (tanf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -802,6 +948,143 @@ void debug_tan(void) {
 }
 
 /**
+ * @brief Fonction de débogage pour tester la fonction hf_asin avec divers cas de test
+ *
+ * Cette fonction teste l'arc sinus de demi-flottants avec des valeurs variées
+ * incluant les valeurs remarquables (0, +/-0.5, +/-1), les valeurs limites du domaine,
+ * les cas spéciaux IEEE 754, et compare avec asinf() standard.
+ */
+void debug_asin(void) {
+    float test_cases[] = {
+        //Zéros
+        0.0f, -0.0f,
+        //Valeurs remarquables
+        0.5f, -0.5f,              //asin(+/-0.5) = +/-pi/6
+        0.7071067811865476f,      //asin(sqrt(2)/2) = pi/4
+        -0.7071067811865476f,     //asin(-sqrt(2)/2) = -pi/4
+        0.8660254037844387f,      //asin(sqrt(3)/2) = pi/3
+        -0.8660254037844387f,     //asin(-sqrt(3)/2) = -pi/3
+        //Limites du domaine
+        1.0f, -1.0f,              //asin(+/-1) = +/-pi/2
+        0.999999f, -0.999999f,    //Très proche de +/-1
+        0.9999f, -0.9999f,
+        //Petites valeurs
+        0.1f, -0.1f,
+        0.01f, -0.01f,
+        0.001f, -0.001f,
+        0.0001f, -0.0001f,
+        0.000061035f, -0.000061035f,
+        //Valeurs intermédiaires pour tester l'interpolation
+        0.25f, -0.25f,
+        0.75f, -0.75f,
+        0.3f, -0.3f,
+        0.6f, -0.6f,
+        //Hors domaine (doivent donner NaN)
+        1.0001f, -1.0001f,
+        2.0f, -2.0f,
+        10.0f, -10.0f,
+        65504.0f, -65504.0f,
+        //Cas spéciaux IEEE 754
+        half_to_float(HF_INFINITY_POS),
+        half_to_float(HF_INFINITY_NEG),
+        half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests
+    const char *headers[] = {"Value", "Result (hf_asin)", "Result (asinf)", "Difference"};
+    
+    for(i = 0; i < num_tests; i++) {
+        uint16_t value_half = float_to_half(test_cases[i]);
+        float value = half_to_float(value_half);
+        uint16_t result_half = hf_asin(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = asinf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+        
+        //Stocker les résultats dans le tableau
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+    
+    //Afficher le tableau formaté
+    print_formatted_table("### HF_ASIN", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_acos avec divers cas de test
+ *
+ * Cette fonction teste l'arc cosinus de demi-flottants avec des valeurs variées
+ * incluant les valeurs remarquables (0, +/-0.5, +/-1), les valeurs limites du domaine,
+ * les cas spéciaux IEEE 754, et compare avec acosf() standard.
+ */
+void debug_acos(void) {
+    float test_cases[] = {
+        //Zéros
+        0.0f, -0.0f,
+        //Valeurs remarquables
+        0.5f, -0.5f,              //acos(0.5) = pi/3, acos(-0.5) = 2pi/3
+        0.7071067811865476f,      //acos(sqrt(2)/2) = pi/4
+        -0.7071067811865476f,     //acos(-sqrt(2)/2) = 3pi/4
+        0.8660254037844387f,      //acos(sqrt(3)/2) = pi/6
+        -0.8660254037844387f,     //acos(-sqrt(3)/2) = 5pi/6
+        //Limites du domaine
+        1.0f, -1.0f,              //acos(1) = 0, acos(-1) = pi
+        0.999999f, -0.999999f,    //Très proche de +/-1
+        0.9999f, -0.9999f,
+        //Petites valeurs
+        0.1f, -0.1f,
+        0.01f, -0.01f,
+        0.001f, -0.001f,
+        0.0001f, -0.0001f,
+        0.000061035f, -0.000061035f,
+        //Valeurs intermédiaires pour tester l'interpolation
+        0.25f, -0.25f,
+        0.75f, -0.75f,
+        0.3f, -0.3f,
+        0.6f, -0.6f,
+        //Hors domaine (doivent donner NaN)
+        1.0001f, -1.0001f,
+        2.0f, -2.0f,
+        10.0f, -10.0f,
+        65504.0f, -65504.0f,
+        //Cas spéciaux IEEE 754
+        half_to_float(HF_INFINITY_POS),
+        half_to_float(HF_INFINITY_NEG),
+        half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests
+    const char *headers[] = {"Value", "Result (hf_acos)", "Result (acosf)", "Difference"};
+   
+    for(i = 0; i < num_tests; i++) {
+        uint16_t value_half = float_to_half(test_cases[i]);
+        float value = half_to_float(value_half);
+        uint16_t result_half = hf_acos(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = acosf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+       
+        //Stocker les résultats dans le tableau
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+        results[i][4] = 0.0f; //Colonne inutilisée
+    }
+   
+    //Afficher le tableau formaté
+    print_formatted_table("### HF_ACOS", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
  * @brief Tests spécialisés pour les valeurs dénormalisées FP16
  * 
  * Cette fonction teste le comportement des fonctions mathématiques
@@ -809,7 +1092,7 @@ void debug_tan(void) {
  * critiques pour la précision aux limites de représentation.
  */
 void debug_denormal_values(void) {
-    /* Valeurs dénormalisées critiques en FP16 */
+    //Valeurs dénormalisées critiques en FP16
     float denormal_values[] = {
         5.96046e-08f,  //Plus petite valeur normale FP16
         2.98023e-08f,  //Plus grande valeur dénormalisée FP16
@@ -821,29 +1104,27 @@ void debug_denormal_values(void) {
         -2.98023e-08f,
         -5.96046e-08f
     };
-    
     int num_denormal = sizeof(denormal_values) / sizeof(denormal_values[0]);
     int i;
-    
-    printf("\n### TESTS DES VALEURS DÉNORMALISÉES FP16\n");
-    printf("=========================================\n");
-    
-    printf("Valeur             Sqrt           Exp            Ln             Sin\n");
-    printf("-----------------------------------------------------------------------\n");
+    float results[10][8];
+    const char *headers[] = {"Value", "Sqrt", "Exp", "Ln", "Sin"};
     
     for(i = 0; i < num_denormal; i++) {
         float val = denormal_values[i];
         uint16_t hf_val = float_to_half(val);
-        
         float sqrt_result = half_to_float(hf_sqrt(hf_val));
         float exp_result = half_to_float(hf_exp(hf_val));
         float ln_result = half_to_float(hf_ln(hf_val));
         float sin_result = half_to_float(hf_sin(hf_val));
         
-        printf("%-18.9e %-14.6e %-14.6e %-14.6e %-14.6e\n", 
-               val, sqrt_result, exp_result, ln_result, sin_result);
+        results[i][0] = val;
+        results[i][1] = sqrt_result;
+        results[i][2] = exp_result;
+        results[i][3] = ln_result;
+        results[i][4] = sin_result;
     }
     
+    print_formatted_table("### TESTS DES VALEURS DENORMALISEES FP16", headers, 5, results, num_denormal);
     printf("\n");
 }
 
@@ -857,41 +1138,43 @@ void debug_mathematical_identities(void) {
     float test_values[] = {0.5f, 1.0f, 1.5f, 2.0f, 3.14159f};
     int num_values = sizeof(test_values) / sizeof(test_values[0]);
     int i;
+    float results_trig[5][8];
+    const char *headers_trig[] = {"Value (x)", "sin^2+cos^2", "Error"};
+    float results_exp_ln[5][8];
+    const char *headers_exp_ln[] = {"Value (x)", "exp(ln(x))", "Relative Error"};
     
-    printf("\n### TESTS DES IDENTITÉS MATHÉMATIQUES\n");
-    printf("======================================\n");
-    
-    printf("Identité sin²(x) + cos²(x) = 1:\n");
-    printf("Valeur (x)      sin²+cos²     Erreur\n");
-    printf("---------------------------------------\n");
+    printf("\n### TESTS DES IDENTITES MATHEMATIQUES\n");
+    printf("======================================\n\n");
     
     for(i = 0; i < num_values; i++) {
         float x = test_values[i];
         uint16_t hf_x = float_to_half(x);
-        
         float sin_val = half_to_float(hf_sin(hf_x));
         float cos_val = half_to_float(hf_cos(hf_x));
         float identity_result = sin_val * sin_val + cos_val * cos_val;
         float error = fabsf(identity_result - 1.0f);
         
-        printf("%-15.6f %-13.9f %-13.9f\n", x, identity_result, error);
+        results_trig[i][0] = x;
+        results_trig[i][1] = identity_result;
+        results_trig[i][2] = error;
     }
     
-    printf("\nIdentité exp(ln(x)) = x:\n");
-    printf("Valeur (x)      exp(ln(x))    Erreur relative\n");
-    printf("----------------------------------------------\n");
+    print_formatted_table("Identite sin^2(x) + cos^2(x) = 1", headers_trig, 3, results_trig, num_values);
+    printf("\n");
     
     for(i = 0; i < num_values; i++) {
         float x = test_values[i];
         uint16_t hf_x = float_to_half(x);
-        
         uint16_t ln_result = hf_ln(hf_x);
         float exp_ln_result = half_to_float(hf_exp(ln_result));
         float error = fabsf((exp_ln_result - x) / x);
         
-        printf("%-15.6f %-13.6f %-15.9f\n", x, exp_ln_result, error);
+        results_exp_ln[i][0] = x;
+        results_exp_ln[i][1] = exp_ln_result;
+        results_exp_ln[i][2] = error;
     }
     
+    print_formatted_table("Identite exp(ln(x)) = x", headers_exp_ln, 3, results_exp_ln, num_values);
     printf("\n");
 }
 
@@ -902,7 +1185,7 @@ void debug_mathematical_identities(void) {
  * causer des problèmes dans les implémentations FP16.
  */
 void debug_ieee754_edge_cases(void) {
-    /* Tests de valeurs limites FP16 */
+    //Tests de valeurs limites FP16
     float edge_values[] = {
         65504.0f,      //Valeur max FP16
         -65504.0f,     //Valeur min FP16
@@ -917,7 +1200,7 @@ void debug_ieee754_edge_cases(void) {
         2.0f - 1e-6f,  //Proche de 2 par en dessous
         2.0f + 1e-6f   //Proche de 2 par au dessus
     };
-    /* Tests de précision de représentation FP16 */
+    //Tests de précision de représentation FP16
     float precision_values[] = {
         3.14159265359f,  //Pi
         2.71828182846f,  //e
@@ -925,48 +1208,49 @@ void debug_ieee754_edge_cases(void) {
         1.73205080757f,  //sqrt(3)
         0.57721566490f   //Constante d'Euler-Mascheroni
     };
-    
     int num_edge = sizeof(edge_values) / sizeof(edge_values[0]);
     int num_precision = sizeof(precision_values) / sizeof(precision_values[0]);
     int i;
+    float results_edge[12][8];
+    const char *headers_edge[] = {"Value", "Add(+1)", "Mul(*2)", "Sqrt", "Exp"};
+    float results_precision[5][8];
+    const char *headers_precision[] = {"Original Value", "Converted FP16", "Relative Error"};
     
     printf("\n### TESTS DES CAS EDGE IEEE 754\n");
-    printf("================================\n");
-    
-    printf("Test des opérations avec valeurs limites:\n");
-    printf("Valeur             Add(+1)        Mul(*2)        Sqrt           Exp\n");
-    printf("------------------------------------------------------------------------\n");
+    printf("================================\n\n");
     
     for(i = 0; i < num_edge; i++) {
         float val = edge_values[i];
         uint16_t hf_val = float_to_half(val);
         uint16_t hf_one = float_to_half(1.0f);
         uint16_t hf_two = float_to_half(2.0f);
-        
         float add_result = half_to_float(hf_add(hf_val, hf_one));
         float mul_result = half_to_float(hf_mul(hf_val, hf_two));
         float sqrt_result = half_to_float(hf_sqrt(hf_val));
         float exp_result = half_to_float(hf_exp(hf_val));
         
-        printf("%-18.6e %-14.6e %-14.6e %-14.6e %-14.6e\n",
-               val, add_result, mul_result, sqrt_result, exp_result);
+        results_edge[i][0] = val;
+        results_edge[i][1] = add_result;
+        results_edge[i][2] = mul_result;
+        results_edge[i][3] = sqrt_result;
+        results_edge[i][4] = exp_result;
     }
     
-    /* Tests de précision de représentation FP16 */
-
+    print_formatted_table("Test des operations avec valeurs limites", headers_edge, 5, results_edge, num_edge);
+    printf("\n");
     
-    printf("\nTest de précision de représentation FP16:\n");
-    printf("Valeur originale   Convertie FP16  Erreur relative\n");
-    printf("--------------------------------------------------\n");
     for(i = 0; i < num_precision; i++) {
         float original = precision_values[i];
         uint16_t hf_val = float_to_half(original);
         float converted = half_to_float(hf_val);
         float error = fabsf((converted - original) / original);
         
-        printf("%-18.11f %-15.11f %-15.9e\n", original, converted, error);
+        results_precision[i][0] = original;
+        results_precision[i][1] = converted;
+        results_precision[i][2] = error;
     }
     
+    print_formatted_table("Test de precision de representation FP16", headers_precision, 3, results_precision, num_precision);
     printf("\n");
 }
 
@@ -978,83 +1262,85 @@ void debug_ieee754_edge_cases(void) {
  */
 void debug_precision_stress_test(void) {
     float pi_half_values[] = {
-        1.5707963f,      /* pi/2 exact (théorique) */
-        1.5703125f,      /* Légèrement en dessous */
-        1.5712890625f,   /* Légèrement au dessus */
-        1.5695f,         /* Plus loin */
-        1.5720f          /* Plus loin */
+        1.5707963f,      //pi/2 exact (théorique)
+        1.5703125f,      //Légèrement en dessous
+        1.5712890625f,   //Légèrement au dessus
+        1.5695f,         //Plus loin
+        1.5720f          //Plus loin
     };
     float small_values[] = {
         1e-4f, 1e-5f, 5.96e-8f, 1e-7f, 1e-6f
     };
     float extreme_values[] = {
-        11.0f,    /* Proche de la limite d'overflow */
-        -11.0f,   /* Proche de la limite d'underflow */
-        10.5f,    /* Valeur intermédiaire */
-        -10.5f,   /* Valeur intermédiaire négative */
-        0.0f      /* Zéro (cas spécial) */
+        11.0f,    //Proche de la limite d'overflow
+        -11.0f,   //Proche de la limite d'underflow
+        10.5f,    //Valeur intermédiaire
+        -10.5f,   //Valeur intermédiaire négative
+        0.0f      //Zéro (cas spécial)
     };
     int i;
+    float results_tan[5][8];
+    const char *headers_tan[] = {"Value", "tan(x)", "tanf(x)", "Relative Error"};
+    float results_sincos[5][8];
+    const char *headers_sincos[] = {"Value", "sin(x)", "cos(x)", "sin^2+cos^2"};
+    float results_exp_ln[5][8];
+    const char *headers_exp_ln[] = {"Value", "exp(x)", "ln(exp(x))", "Error"};
     
     printf("### TESTS DE STRESS DE PRECISION\n");
-    printf("================================\n");
+    printf("================================\n\n");
     
-    /* Test avec valeurs très proches de pi/2 pour tan */
-    printf("Test tan() pres de pi/2:\n");
-    printf("Valeur             tan(x)             tanf(x)            Erreur relative\n");
-    printf("------------------------------------------------------------------------\n");
     for(i = 0; i < 5; i++) {
         float val = pi_half_values[i];
         uint16_t hf_val = float_to_half(val);
         float converted_val = half_to_float(hf_val);
-        
         uint16_t result_hf = hf_tan(hf_val);
         float result_float = half_to_float(result_hf);
         float std_result = tanf(converted_val);
         float relative_error = fabsf((result_float - std_result) / std_result);
         
-        printf("%-18.10f %-18.6f %-18.6f %-15.9f\n", 
-               converted_val, result_float, std_result, relative_error);
+        results_tan[i][0] = converted_val;
+        results_tan[i][1] = result_float;
+        results_tan[i][2] = std_result;
+        results_tan[i][3] = relative_error;
     }
     
-    /* Test avec très petites valeurs pour sin/cos */
-    printf("\nTest sin/cos avec très petites valeurs:\n");
-    printf("Valeur             sin(x)             cos(x)             sin²+cos²\n");
-    printf("--------------------------------------------------------------------\n");
+    print_formatted_table("Test tan() pres de pi/2", headers_tan, 4, results_tan, 5);
+    printf("\n");
     
     for(i = 0; i < 5; i++) {
         float val = small_values[i];
         uint16_t hf_val = float_to_half(val);
-        
         uint16_t sin_hf = hf_sin(hf_val);
         uint16_t cos_hf = hf_cos(hf_val);
         float sin_result = half_to_float(sin_hf);
         float cos_result = half_to_float(cos_hf);
         float identity_check = sin_result*sin_result + cos_result*cos_result;
         
-        printf("%-18.9e %-18.9e %-18.9e %-15.9f\n", 
-               half_to_float(hf_val), sin_result, cos_result, identity_check);
+        results_sincos[i][0] = half_to_float(hf_val);
+        results_sincos[i][1] = sin_result;
+        results_sincos[i][2] = cos_result;
+        results_sincos[i][3] = identity_check;
     }
     
-    /* Test exp/ln avec valeurs extrêmes */
-    printf("\nTest exp/ln aux limites de représentation:\n");
-    printf("Valeur             exp(x)             ln(exp(x))         Erreur\n");
-    printf("----------------------------------------------------------------\n");
+    print_formatted_table("Test sin/cos avec tres petites valeurs", headers_sincos, 4, results_sincos, 5);
+    printf("\n");
     
     for(i = 0; i < 5; i++) {
         float val = extreme_values[i];
         uint16_t hf_val = float_to_half(val);
-        
         uint16_t exp_hf = hf_exp(hf_val);
         uint16_t ln_exp_hf = hf_ln(exp_hf);
         float exp_result = half_to_float(exp_hf);
         float ln_exp_result = half_to_float(ln_exp_hf);
         float error = fabsf(ln_exp_result - half_to_float(hf_val));
         
-        printf("%-18.6f %-18.6f %-18.6f %-15.9f\n", 
-               half_to_float(hf_val), exp_result, ln_exp_result, error);
+        results_exp_ln[i][0] = half_to_float(hf_val);
+        results_exp_ln[i][1] = exp_result;
+        results_exp_ln[i][2] = ln_exp_result;
+        results_exp_ln[i][3] = error;
     }
     
+    print_formatted_table("Test exp/ln aux limites de representation", headers_exp_ln, 4, results_exp_ln, 5);
     printf("\n");
 }
 
@@ -1065,67 +1351,80 @@ void debug_precision_stress_test(void) {
  * sur des valeurs de référence mathématiques connues.
  */
 void debug_comparative_accuracy(void) {
-    struct {
-        const char* name;
-        float value;
-        const char* description;
-    } constants[] = {
-        {"pi", 3.141592653589793f, "Pi"},
-        {"e", 2.718281828459045f, "Nombre d'Euler"},
-        {"sqrt(2)", 1.4142135623730951f, "Racine de 2"},
-        {"sqrt(3)", 1.7320508075688772f, "Racine de 3"},
-        {"ln(2)", 0.6931471805599453f, "Logarithme naturel de 2"},
-        {"ln(10)", 2.302585092994046f, "Logarithme naturel de 10"},
-        {"1/pi", 0.3183098861837907f, "Inverse de pi"},
-        {"pi/2", 1.5707963267948966f, "pi sur 2"},
-        {"pi/4", 0.7853981633974483f, "pi sur 4"},
-        {"2*pi", 6.283185307179586f, "2*pi"}
+    float constants_values[] = {
+        3.141592653589793f,   //Pi
+        2.718281828459045f,   //e
+        1.4142135623730951f,  //sqrt(2)
+        1.7320508075688772f,  //sqrt(3)
+        0.6931471805599453f,  //ln(2)
+        2.302585092994046f,   //ln(10)
+        0.3183098861837907f,  //1/pi
+        1.5707963267948966f,  //pi/2
+        0.7853981633974483f,  //pi/4
+        6.283185307179586f    //2*pi
     };
-    struct {
-        const char* expr;
-        float input;
-        float expected;
-        uint16_t (*func)(uint16_t);
-    } trig_tests[] = {
-        {"sin(pi/6)", 3.141592653589793f/6.0f, 0.5f, hf_sin},
-        {"cos(pi/3)", 3.141592653589793f/3.0f, 0.5f, hf_cos},
-        {"sin(pi/2)", 3.141592653589793f/2.0f, 1.0f, hf_sin},
-        {"cos(pi/2)", 3.141592653589793f/2.0f, 0.0f, hf_cos},
-        {"sin(pi)", 3.141592653589793f, 0.0f, hf_sin},
-        {"cos(pi)", 3.141592653589793f, -1.0f, hf_cos}
+    float trig_inputs[] = {
+        3.141592653589793f/6.0f,   //pi/6 pour sin
+        3.141592653589793f/3.0f,   //pi/3 pour cos
+        3.141592653589793f/2.0f,   //pi/2 pour sin
+        3.141592653589793f/2.0f,   //pi/2 pour cos
+        3.141592653589793f,        //pi pour sin
+        3.141592653589793f         //pi pour cos
+    };
+    float trig_expected[] = {
+        0.5f,   //sin(pi/6)
+        0.5f,   //cos(pi/3)
+        1.0f,   //sin(pi/2)
+        0.0f,   //cos(pi/2)
+        0.0f,   //sin(pi)
+        -1.0f   //cos(pi)
     };
     int i;
+    float results_constants[10][8];
+    const char *headers_constants[] = {"Theoretical", "HF16 Value", "Relative Error"};
+    float results_trig[6][8];
+    const char *headers_trig[] = {"Input", "Theoretical", "HF16 Result", "Error"};
     
     printf("### TESTS DE PRECISION COMPARATIVE\n");
-    printf("==================================\n");
+    printf("==================================\n\n");
     
-    printf("Constante          Valeur théorique   Valeur HF16        Erreur relative\n");
-    printf("------------------------------------------------------------------------\n");
     for(i = 0; i < 10; i++) {
-        float theoretical = constants[i].value;
+        float theoretical = constants_values[i];
         uint16_t hf_val = float_to_half(theoretical);
         float hf_converted = half_to_float(hf_val);
         float relative_error = fabsf((hf_converted - theoretical) / theoretical);
         
-        printf("%-18s %-18.12f %-18.12f %-15.9e\n",
-               constants[i].name, theoretical, hf_converted, relative_error);
+        results_constants[i][0] = theoretical;
+        results_constants[i][1] = hf_converted;
+        results_constants[i][2] = relative_error;
     }
     
-    /* Test de fonctions trigonométriques sur constantes */
-    printf("\nTest trigonométrique sur constantes:\n");
-    printf("Expression         Théorique          HF16               Erreur\n");
-    printf("----------------------------------------------------------------\n");
+    print_formatted_table("Test des constantes mathematiques", headers_constants, 3, results_constants, 10);
+    printf("\n");
     
     for(i = 0; i < 6; i++) {
-        uint16_t hf_input = float_to_half(trig_tests[i].input);
-        uint16_t result_hf = trig_tests[i].func(hf_input);
-        float result = half_to_float(result_hf);
-        float error = fabsf(result - trig_tests[i].expected);
+        uint16_t hf_input = float_to_half(trig_inputs[i]);
+        uint16_t result_hf;
+        float result;
+        float error;
         
-        printf("%-18s %-18.12f %-18.12f %-15.9f\n",
-               trig_tests[i].expr, trig_tests[i].expected, result, error);
+        //Alterner entre sin et cos
+        if(i == 0 || i == 2 || i == 4) {
+            result_hf = hf_sin(hf_input);
+        } else {
+            result_hf = hf_cos(hf_input);
+        }
+        
+        result = half_to_float(result_hf);
+        error = fabsf(result - trig_expected[i]);
+        
+        results_trig[i][0] = trig_inputs[i];
+        results_trig[i][1] = trig_expected[i];
+        results_trig[i][2] = result;
+        results_trig[i][3] = error;
     }
     
+    print_formatted_table("Test trigonometrique sur constantes", headers_trig, 4, results_trig, 6);
     printf("\n");
 }
 
@@ -1136,72 +1435,70 @@ void debug_comparative_accuracy(void) {
  */
 void debug_boundary_conditions(void) {
     uint16_t boundary_values[] = {
-        0x0000,  /* +0 */
-        0x8000,  /* -0 */
-        0x0001,  /* Plus petit dénormalisé positif */
-        0x8001,  /* Plus petit dénormalisé négatif */
-        0x03FF,  /* Plus grand dénormalisé positif */
-        0x83FF,  /* Plus grand dénormalisé négatif */
-        0x0400,  /* Plus petit normalisé positif */
-        0x8400,  /* Plus petit normalisé négatif */
-        0x7BFF,  /* Plus grand fini positif */
-        0xFBFF,  /* Plus grand fini négatif */
-        0x7C00,  /* +inf */
-        0xFC00,  /* -inf */
-        0x7E00,  /* NaN */
-        0xFE00   /* -NaN */
-    };
-    const char* descriptions[] = {
-        "+0", "-0", "Min denorm +", "Min denorm -",
-        "Max denorm +", "Max denorm -", "Min norm +", "Min norm -",
-        "Max finite +", "Max finite -", "+inf", "-inf", "NaN", "-NaN"
+        0x0000,  //+0
+        0x8000,  //-0
+        0x0001,  //Plus petit dénormalisé positif
+        0x8001,  //Plus petit dénormalisé négatif
+        0x03FF,  //Plus grand dénormalisé positif
+        0x83FF,  //Plus grand dénormalisé négatif
+        0x0400,  //Plus petit normalisé positif
+        0x8400,  //Plus petit normalisé négatif
+        0x7BFF,  //Plus grand fini positif
+        0xFBFF,  //Plus grand fini négatif
+        0x7C00,  //+inf
+        0xFC00,  //-inf
+        0x7E00,  //NaN
+        0xFE00   //-NaN
     };
     uint16_t large_val;
     uint16_t add_overflow;
     uint16_t tiny_val;
     uint16_t div_underflow;
     int i;
+    float results_boundary[14][8];
+    const char *headers_boundary[] = {"Value", "sqrt", "exp", "ln"};
+    float results_transitions[2][8];
+    const char *headers_transitions[] = {"Input", "Output", "Expected", "IEEE 754 OK"};
     
     printf("### TESTS DES CONDITIONS AUX LIMITES\n");
-    printf("====================================\n");
+    printf("====================================\n\n");
     
-    printf("Test des opérations sur les valeurs limites:\n");
-    printf("Valeur             Description        sqrt           exp            ln\n");
-    printf("------------------------------------------------------------------------\n");
     for(i = 0; i < 14; i++) {
         uint16_t val = boundary_values[i];
         uint16_t sqrt_result = hf_sqrt(val);
         uint16_t exp_result = hf_exp(val);
         uint16_t ln_result = hf_ln(val);
-        
         float val_f = half_to_float(val);
         float sqrt_f = half_to_float(sqrt_result);
         float exp_f = half_to_float(exp_result);
         float ln_f = half_to_float(ln_result);
         
-        printf("%-18.9e %-18s %-14.6e %-14.6e %-14.6e\n",
-               val_f, descriptions[i], sqrt_f, exp_f, ln_f);
+        results_boundary[i][0] = val_f;
+        results_boundary[i][1] = sqrt_f;
+        results_boundary[i][2] = exp_f;
+        results_boundary[i][3] = ln_f;
     }
     
-    /* Test de transitions critiques */
-    printf("\nTest des transitions critiques:\n");
-    printf("Opération          Entrée             Sortie             IEEE 754 OK\n");
-    printf("--------------------------------------------------------------------\n");
+    print_formatted_table("Test des operations sur les valeurs limites", headers_boundary, 4, results_boundary, 14);
+    printf("\n");
     
-    /* Tests de débordement */
+    //Test de débordement
     large_val = float_to_half(65000.0f);
     add_overflow = hf_add(large_val, large_val);
-    printf("%-18s %-18.6f %-18s %s\n", "65000+65000", 65000.0f, 
-           (add_overflow == 0x7C00) ? "inf" : "finite", 
-           (add_overflow == 0x7C00) ? "OK" : "ERR");
+    results_transitions[0][0] = 65000.0f;
+    results_transitions[0][1] = half_to_float(add_overflow);
+    results_transitions[0][2] = INFINITY;
+    results_transitions[0][3] = (add_overflow == 0x7C00) ? 1.0f : 0.0f;
     
-    /* Test de sous-débordement */
-    tiny_val = 0x0001;  /* Plus petit dénormalisé */
+    //Test de sous-débordement
+    tiny_val = 0x0001;
     div_underflow = hf_div(tiny_val, float_to_half(2.0f));
-    printf("%-18s %-18.9e %-18s %s\n", "tiny/2", half_to_float(tiny_val), 
-           (div_underflow == 0x0000) ? "0" : "finite",
-           "OK");
+    results_transitions[1][0] = half_to_float(tiny_val);
+    results_transitions[1][1] = half_to_float(div_underflow);
+    results_transitions[1][2] = 0.0f;
+    results_transitions[1][3] = (div_underflow == 0x0000) ? 1.0f : 0.0f;
     
+    print_formatted_table("Test des transitions critiques", headers_transitions, 4, results_transitions, 2);
     printf("\n");
 }
 
@@ -1211,48 +1508,36 @@ void debug_boundary_conditions(void) {
  * Teste la gestion des constantes mathématiques et cas particuliers.
  */
 void debug_special_constants(void) {
-    struct {
-        const char* expr;
-        float base;
-        float exp;
-        float expected;
-    } power_tests[] = {
-        {"2^1", 2.0f, 1.0f, 2.0f},
-        {"2^2", 2.0f, 2.0f, 4.0f},
-        {"2^3", 2.0f, 3.0f, 8.0f},
-        {"2^10", 2.0f, 10.0f, 1024.0f},
-        {"2^(-1)", 2.0f, -1.0f, 0.5f},
-        {"2^(-2)", 2.0f, -2.0f, 0.25f},
-        {"4^2", 4.0f, 2.0f, 16.0f},
-        {"16^0.5", 16.0f, 0.5f, 4.0f}
-    };
+    float power_bases[] = {2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 4.0f, 16.0f};
+    float power_exps[] = {1.0f, 2.0f, 3.0f, 10.0f, -1.0f, -2.0f, 2.0f, 0.5f};
+    float power_expected[] = {2.0f, 4.0f, 8.0f, 1024.0f, 0.5f, 0.25f, 16.0f, 4.0f};
     float sqrt_inputs[] = {0.0f, 1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f, 64.0f};
     float sqrt_expected[] = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 8.0f};
     int i;
+    float results_pow[8][8];
+    const char *headers_pow[] = {"Base", "Exponent", "Result HF16", "Expected", "Exact"};
+    float results_sqrt[8][8];
+    const char *headers_sqrt[] = {"Input", "Result HF16", "Expected", "Exact"};
     
     printf("### TESTS DES CONSTANTES SPECIALES\n");
-    printf("==================================\n");
+    printf("==================================\n\n");
     
-    /* Test des puissances de 2 exactes */
-    printf("Test des puissances de 2 (doivent être exactes):\n");
-    printf("Expression         Résultat HF16      Attendu            Exact\n");
-    printf("----------------------------------------------------------------\n");
     for(i = 0; i < 8; i++) {
-        uint16_t base_hf = float_to_half(power_tests[i].base);
-        uint16_t exp_hf = float_to_half(power_tests[i].exp);
+        uint16_t base_hf = float_to_half(power_bases[i]);
+        uint16_t exp_hf = float_to_half(power_exps[i]);
         uint16_t result_hf = hf_pow(base_hf, exp_hf);
         float result = half_to_float(result_hf);
-        int is_exact = (fabsf(result - power_tests[i].expected) < 1e-6f);
+        int is_exact = (fabsf(result - power_expected[i]) < 1e-6f);
         
-        printf("%-18s %-18.6f %-18.6f %s\n",
-               power_tests[i].expr, result, power_tests[i].expected,
-               is_exact ? "OK" : "ERR");
+        results_pow[i][0] = power_bases[i];
+        results_pow[i][1] = power_exps[i];
+        results_pow[i][2] = result;
+        results_pow[i][3] = power_expected[i];
+        results_pow[i][4] = is_exact ? 1.0f : 0.0f;
     }
     
-    /* Test des racines exactes */
-    printf("\nTest des racines exactes:\n");
-    printf("Expression         Résultat HF16      Attendu            Exact\n");
-    printf("----------------------------------------------------------------\n");
+    print_formatted_table("Test des puissances de 2 (doivent etre exactes)", headers_pow, 5, results_pow, 8);
+    printf("\n");
     
     for(i = 0; i < 8; i++) {
         uint16_t input_hf = float_to_half(sqrt_inputs[i]);
@@ -1260,11 +1545,13 @@ void debug_special_constants(void) {
         float result = half_to_float(result_hf);
         int is_exact = (fabsf(result - sqrt_expected[i]) < 1e-6f);
         
-        printf("sqrt(%-12.0f) %-18.6f %-18.6f %s\n",
-               sqrt_inputs[i], result, sqrt_expected[i],
-               is_exact ? "OK" : "ERR");
+        results_sqrt[i][0] = sqrt_inputs[i];
+        results_sqrt[i][1] = result;
+        results_sqrt[i][2] = sqrt_expected[i];
+        results_sqrt[i][3] = is_exact ? 1.0f : 0.0f;
     }
     
+    print_formatted_table("Test des racines exactes", headers_sqrt, 4, results_sqrt, 8);
     printf("\n");
 }
 
@@ -1278,73 +1565,276 @@ void debug_inverse_functions(void) {
     float sqrt_test_values[] = {-5.0f, -2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 5.0f, 10.0f};
     float trig_values[] = {0.0f, 0.1f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 6.0f, 10.0f};
     int i;
+    float results_exp_ln[7][8];
+    const char *headers_exp_ln[] = {"x", "ln(x)", "exp(ln(x))", "Relative Error"};
+    float results_sqrt_sq[8][8];
+    const char *headers_sqrt_sq[] = {"x", "x^2", "sqrt(x^2)", "|x|", "Exact"};
+    float results_trig_identity[9][8];
+    const char *headers_trig_identity[] = {"x", "sin(x)", "cos(x)", "sin^2+cos^2", "Error"};
     
     printf("### TESTS DES FONCTIONS INVERSES\n");
-    printf("================================\n");
+    printf("================================\n\n");
     
-    /* Test exp(ln(x)) = x */
-    printf("Test exp(ln(x)) = x:\n");
-    printf("x                  ln(x)              exp(ln(x))         Erreur relative\n");
-    printf("------------------------------------------------------------------------\n");
     for(i = 0; i < 7; i++) {
         float x = test_values[i];
         uint16_t x_hf = float_to_half(x);
-        
         uint16_t ln_hf = hf_ln(x_hf);
         uint16_t exp_ln_hf = hf_exp(ln_hf);
-        
         float ln_result = half_to_float(ln_hf);
         float exp_ln_result = half_to_float(exp_ln_hf);
         float relative_error = fabsf((exp_ln_result - x) / x);
         
-        printf("%-18.6f %-18.6f %-18.6f %-15.9f\n",
-               x, ln_result, exp_ln_result, relative_error);
+        results_exp_ln[i][0] = x;
+        results_exp_ln[i][1] = ln_result;
+        results_exp_ln[i][2] = exp_ln_result;
+        results_exp_ln[i][3] = relative_error;
     }
     
-    /* Test sqrt(x²) = |x| */
-    printf("\nTest sqrt(x²) = |x|:\n");
-    printf("x                  x²                 sqrt(x²)           |x|             Exact\n");
-    printf("--------------------------------------------------------------------------------\n");
+    print_formatted_table("Test exp(ln(x)) = x", headers_exp_ln, 4, results_exp_ln, 7);
+    printf("\n");
     
     for(i = 0; i < 8; i++) {
         float x = sqrt_test_values[i];
         uint16_t x_hf = float_to_half(x);
-        
         uint16_t x2_hf = hf_mul(x_hf, x_hf);
         uint16_t sqrt_x2_hf = hf_sqrt(x2_hf);
-        
         float x2_result = half_to_float(x2_hf);
         float sqrt_x2_result = half_to_float(sqrt_x2_hf);
         float abs_x = fabsf(x);
         int is_exact = (fabsf(sqrt_x2_result - abs_x) < 1e-4f);
         
-        printf("%-18.6f %-18.6f %-18.6f %-15.6f %s\n",
-               x, x2_result, sqrt_x2_result, abs_x,
-               is_exact ? "OK" : "ERR");
+        results_sqrt_sq[i][0] = x;
+        results_sqrt_sq[i][1] = x2_result;
+        results_sqrt_sq[i][2] = sqrt_x2_result;
+        results_sqrt_sq[i][3] = abs_x;
+        results_sqrt_sq[i][4] = is_exact ? 1.0f : 0.0f;
     }
     
-    /* Test sin²(x) + cos²(x) = 1 pour valeurs étendues */
-    printf("\nTest sin²(x) + cos²(x) = 1 (valeurs étendues):\n");
-    printf("x                  sin(x)             cos(x)             sin²+cos²       Erreur\n");
-    printf("--------------------------------------------------------------------------------\n");
+    print_formatted_table("Test sqrt(x^2) = |x|", headers_sqrt_sq, 5, results_sqrt_sq, 8);
+    printf("\n");
     
     for(i = 0; i < 9; i++) {
         float x = trig_values[i];
         uint16_t x_hf = float_to_half(x);
-        
         uint16_t sin_hf = hf_sin(x_hf);
         uint16_t cos_hf = hf_cos(x_hf);
-        
         float sin_result = half_to_float(sin_hf);
         float cos_result = half_to_float(cos_hf);
         float identity = sin_result*sin_result + cos_result*cos_result;
         float error = fabsf(identity - 1.0f);
         
-        printf("%-18.6f %-18.6f %-18.6f %-15.6f %-15.9f\n",
-               x, sin_result, cos_result, identity, error);
+        results_trig_identity[i][0] = x;
+        results_trig_identity[i][1] = sin_result;
+        results_trig_identity[i][2] = cos_result;
+        results_trig_identity[i][3] = identity;
+        results_trig_identity[i][4] = error;
     }
     
+    print_formatted_table("Test sin^2(x) + cos^2(x) = 1 (valeurs etendues)", headers_trig_identity, 5, results_trig_identity, 9);
     printf("\n");
+}
+
+/**
+ * @brief Test comparatif des différentes méthodes de calcul de rsqrt
+ *
+ * Compare hf_rsqrt() avec hf_div(1, hf_sqrt()) et hf_inv(hf_sqrt())
+ * pour vérifier leur cohérence et leurs performances relatives.
+ */
+void debug_rsqrt_comparison(void) {
+    float test_cases[] = {
+        //Valeurs classiques
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 16.0f,
+        
+        //Cas spéciaux IEEE 754
+        0.0f, -0.0f, 0.25f, -1.0f,
+        
+        //Valeurs dénormalisées et petites
+        0.000061035f, 5.96e-8f, 1e-10f,
+        
+        //Valeurs limites du half-float
+        65504.0f,      //Max half-float normal
+        6.10e-5f,      //Min half-float normal (environ 2^-14)
+        6.0e-8f,       //Valeur dénormalisée
+        5.96e-8f,      //Plus petite valeur dénormalisée non-nulle
+        
+        //Puissances de 2 (doivent être exactes)
+        0.0625f,       //2^-4 -> rsqrt = 4
+        0.125f,        //2^-3 -> rsqrt = 2*sqrt(2)
+        0.5f,          //2^-1 -> rsqrt = sqrt(2)
+        4.0f,          //2^2  -> rsqrt = 0.5
+        64.0f,         //2^6  -> rsqrt = 0.125
+        256.0f,        //2^8  -> rsqrt = 0.0625
+        1024.0f,       //2^10 -> rsqrt = 0.03125
+        
+        //Valeurs proches de 1 (test précision)
+        0.99f, 0.999f, 0.9999f,
+        1.001f, 1.01f, 1.1f,
+        
+        //Nombres négatifs variés
+        -0.5f, -2.0f, -100.0f,
+        
+        //Grandes valeurs
+        100.0f, 10000.0f,
+        
+        //Valeurs fractionnaires
+        0.1f, 0.01f, 0.001f, 0.0001f,
+        
+        //Valeurs intermédiaires
+        2.0f, 3.0f
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+    float value, value_converted, std_result;
+    uint16_t value_half, rsqrt_result, sqrt_result, one_half, div_result, inv_result;
+    float rsqrt_float, div_float, inv_float;
+    float err_rsqrt, err_div, err_inv;
+    float results[100][8];
+    const char *headers[] = {
+        "Value", 
+        "hf_rsqrt", 
+        "1/sqrt (div)", 
+        "inv(sqrt)", 
+        "Ref (1/sqrtf)",
+        "Err rsqrt",
+        "Err div",
+        "Err inv"
+    };
+    int count_rsqrt_best, count_div_best, count_inv_best, count_equal, valid_count;
+    float max_err_rsqrt, max_err_div, max_err_inv;
+    float sum_err_rsqrt, sum_err_div, sum_err_inv;
+    
+    printf("### COMPARAISON DES METHODES DE CALCUL DE RSQRT\n");
+    printf("================================================\n\n");
+    
+    for(i = 0; i < num_tests; i++) {
+        value = test_cases[i];
+        value_half = float_to_half(value);
+        
+        //Méthode 1: hf_rsqrt directe
+        rsqrt_result = hf_rsqrt(value_half);
+        rsqrt_float = half_to_float(rsqrt_result);
+        
+        //Méthode 2: hf_div(1, hf_sqrt())
+        sqrt_result = hf_sqrt(value_half);
+        one_half = float_to_half(1.0f);
+        div_result = hf_div(one_half, sqrt_result);
+        div_float = half_to_float(div_result);
+        
+        //Méthode 3: hf_inv(hf_sqrt())
+        inv_result = hf_inv(sqrt_result);
+        inv_float = half_to_float(inv_result);
+        
+        //Calcul de référence: 1/sqrtf(x)
+        value_converted = half_to_float(value_half);
+        
+        if(isnan(value_converted)) {
+            std_result = NAN;
+        } else if(isinf(value_converted)) {
+            std_result = (value_converted > 0.0f) ? 0.0f : NAN;
+        } else if(value_converted == 0.0f) {
+            std_result = INFINITY;
+        } else if(value_converted < 0.0f) {
+            std_result = NAN;
+        } else {
+            std_result = 1.0f / sqrtf(value_converted);
+        }
+        
+        //Calcul des erreurs absolues
+        err_rsqrt = fabsf(rsqrt_float - std_result);
+        err_div = fabsf(div_float - std_result);
+        err_inv = fabsf(inv_float - std_result);
+        
+        //Gestion des cas NaN/Inf pour les erreurs
+        if(isnan(std_result)) {
+            err_rsqrt = isnan(rsqrt_float) ? 0.0f : INFINITY;
+            err_div = isnan(div_float) ? 0.0f : INFINITY;
+            err_inv = isnan(inv_float) ? 0.0f : INFINITY;
+        } else if(isinf(std_result)) {
+            err_rsqrt = isinf(rsqrt_float) ? 0.0f : INFINITY;
+            err_div = isinf(div_float) ? 0.0f : INFINITY;
+            err_inv = isinf(inv_float) ? 0.0f : INFINITY;
+        }
+        
+        results[i][0] = value;
+        results[i][1] = rsqrt_float;
+        results[i][2] = div_float;
+        results[i][3] = inv_float;
+        results[i][4] = std_result;
+        results[i][5] = err_rsqrt;
+        results[i][6] = err_div;
+        results[i][7] = err_inv;
+    }
+    
+    print_formatted_table("Comparaison des méthodes", headers, 8, results, num_tests);
+    
+    //Statistiques comparatives
+    printf("\n### STATISTIQUES COMPARATIVES\n");
+    printf("==============================\n\n");
+    
+    count_rsqrt_best = 0;
+    count_div_best = 0;
+    count_inv_best = 0;
+    count_equal = 0;
+    max_err_rsqrt = 0.0f;
+    max_err_div = 0.0f;
+    max_err_inv = 0.0f;
+    sum_err_rsqrt = 0.0f;
+    sum_err_div = 0.0f;
+    sum_err_inv = 0.0f;
+    valid_count = 0;
+    
+    for(i = 0; i < num_tests; i++) {
+        err_rsqrt = results[i][5];
+        err_div = results[i][6];
+        err_inv = results[i][7];
+        
+        //Ignorer les cas NaN/Inf pour les statistiques
+        if(!isnan(err_rsqrt) && !isinf(err_rsqrt) &&
+           !isnan(err_div) && !isinf(err_div) &&
+           !isnan(err_inv) && !isinf(err_inv)) {
+            
+            valid_count++;
+            sum_err_rsqrt += err_rsqrt;
+            sum_err_div += err_div;
+            sum_err_inv += err_inv;
+            
+            if(err_rsqrt > max_err_rsqrt) max_err_rsqrt = err_rsqrt;
+            if(err_div > max_err_div) max_err_div = err_div;
+            if(err_inv > max_err_inv) max_err_inv = err_inv;
+            
+            //Déterminer la meilleure méthode (avec tolérance)
+            if(fabsf(err_rsqrt - err_div) < 1e-7f && 
+               fabsf(err_rsqrt - err_inv) < 1e-7f) {
+                count_equal++;
+            } else if(err_rsqrt <= err_div && err_rsqrt <= err_inv) {
+                count_rsqrt_best++;
+            } else if(err_div <= err_rsqrt && err_div <= err_inv) {
+                count_div_best++;
+            } else {
+                count_inv_best++;
+            }
+        }
+    }
+    
+    printf("Nombre de tests valides : %d/%d\n\n", valid_count, num_tests);
+    
+    printf("Erreurs maximales :\n");
+    printf("  hf_rsqrt()       : %.9f\n", max_err_rsqrt);
+    printf("  1/sqrt (div)     : %.9f\n", max_err_div);
+    printf("  inv(sqrt)        : %.9f\n\n", max_err_inv);
+    
+    if(valid_count > 0) {
+        printf("Erreurs moyennes :\n");
+        printf("  hf_rsqrt()       : %.9f\n", sum_err_rsqrt / valid_count);
+        printf("  1/sqrt (div)     : %.9f\n", sum_err_div / valid_count);
+        printf("  inv(sqrt)        : %.9f\n\n", sum_err_inv / valid_count);
+    }
+    
+    printf("Meilleure méthode par cas :\n");
+    printf("  hf_rsqrt()       : %d cas\n", count_rsqrt_best);
+    printf("  1/sqrt (div)     : %d cas\n", count_div_best);
+    printf("  inv(sqrt)        : %d cas\n", count_inv_best);
+    printf("  Egalité          : %d cas\n\n", count_equal);
 }
 
 /**
@@ -1356,8 +1846,8 @@ void debug_inverse_functions(void) {
  * @param data Tableau 2D des données [num_rows][num_cols]
  * @param num_rows Nombre de lignes
  */
-static void print_formatted_table(const char *title, const char **headers, int num_cols, float data[][5], int num_rows) {
-    int col_widths[5] = {0}; /* Maximum 5 colonnes */
+static void print_formatted_table(const char *title, const char **headers, int num_cols, float data[][8], int num_rows) {
+    int col_widths[8] = {0}; /* Maximum 8 colonnes */
     int i, j, width;
     char buffer[32];
     
@@ -1371,7 +1861,7 @@ static void print_formatted_table(const char *title, const char **headers, int n
     
     /* Calculer la largeur maximale nécessaire pour chaque colonne */
     for(i = 0; i < num_rows; i++) {
-        for(j = 0; j < num_cols && j < 5; j++) {
+        for(j = 0; j < num_cols && j < 8; j++) {
             sprintf(buffer, "%.9f", data[i][j]);
             width = (int)strlen(buffer);
             if(width > col_widths[j]) {
