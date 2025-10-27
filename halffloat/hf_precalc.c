@@ -42,7 +42,7 @@ uint16_t tan_table_high[TAN_DUAL_TABLE_SIZE+1];  //[75°, 90°] Q6 format (16-bi
  * La table couvre l'intervalle [0, pi/2] avec SIN_TABLE_SIZE+1 points,
  * permettant une interpolation linéaire précise.
  */
-void fill_sin_table() {
+void fill_sin_table(void) {
     int i;
 
     for(i = 0; i <= SIN_TABLE_SIZE; i++) {
@@ -82,7 +82,7 @@ void fill_asin_table(void) {
  * La table couvre l'intervalle [1, 2[ avec LN_TABLE_SIZE points, 
  * permettant une interpolation rapide et précise.
  */
-void fill_ln_table() {
+void fill_ln_table(void) {
     int i;
 
     for(i = 0; i < LN_TABLE_SIZE; i++) {
@@ -103,7 +103,7 @@ void fill_ln_table() {
  * La table couvre un intervalle prédéfini avec une précision adaptée 
  * aux calculs de demi-précision.
  */
-void fill_exp_table() {
+void fill_exp_table(void) {
     int i;
 
     for(i = 0; i <= EXP_TABLE_SIZE; i++) {
@@ -128,7 +128,7 @@ void fill_exp_table() {
  * 
  * Format Q15 32-bit pour précision optimale, amélioration ×8.4 vs table unique
  */
-void fill_tan_tables_dual() {
+void fill_tan_tables_dual(void) {
     int i;
     
     //TABLE LOW Q13: [0°, 75°] = [0, 5pi/12]

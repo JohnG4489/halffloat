@@ -65,12 +65,12 @@ typedef struct {
 uint16_t float_to_half(float f);
 float half_to_float(uint16_t hf);
 
-bool_t is_infinity(half_float hf);
-bool_t is_nan(half_float hf);
-bool_t is_zero(half_float hf);
+bool_t is_infinity(const half_float *hf);
+bool_t is_nan(const half_float *hf);
+bool_t is_zero(const half_float *hf);
 
 half_float decompose_half(uint16_t hf);
-uint16_t compose_half(half_float hf);
+uint16_t compose_half(const half_float *hf);
 
 void align_mantissas(half_float *hf1, half_float *hf2);
 void normalize_and_round(half_float *result);

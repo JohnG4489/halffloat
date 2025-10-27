@@ -579,7 +579,22 @@ void debug_pow(void) {
         {2.5f, half_to_float(hf_ln(float_to_half(-2.0f)))},
         {half_to_float(hf_sqrt(float_to_half(-4.0f))), half_to_float(hf_ln(float_to_half(-1.5f)))},
         //Cas spéciaux IEEE 754 - Bases négatives avec exposants fractionnaires
-        {-2.0f, 0.5f}, {-4.0f, 0.25f}, {-1.0f, 2.5f}
+        {-2.0f, 0.5f}, {-4.0f, 0.25f}, {-1.0f, 2.5f},
+        //Cas spéciaux IEEE 754 - Puissances avec base -1
+        {-1.0f, 0.0f},       //(-1)^0 = 1
+        {-1.0f, -0.0f},      //(-1)^(-0) = 1
+        {-1.0f, 1.0f},       //(-1)^1 = -1
+        {-1.0f, 2.0f},       //(-1)^2 = +1
+        {-1.0f, 3.0f},       //(-1)^3 = -1
+        {-1.0f, 4.0f},       //(-1)^4 = +1
+        {-1.0f, -1.0f},      //(-1)^(-1) = -1
+        {-1.0f, -2.0f},      //(-1)^(-2) = +1
+        {-1.0f, -3.0f},      //(-1)^(-3) = -1
+        {-1.0f, 0.5f},       //(-1)^0.5 = NaN (indéfini en réel)
+        {-1.0f, -0.5f},      //(-1)^(-0.5) = NaN (idem)
+        {-1.0f, 2.5f},       //(-1)^2.5 = NaN
+        {-1.0f, half_to_float(HF_INFINITY_POS)},  //(-1)^+Inf = NaN
+        {-1.0f, half_to_float(HF_INFINITY_NEG)}  //(-1)^-Inf = NaN
     };
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;

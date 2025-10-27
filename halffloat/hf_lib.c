@@ -16,8 +16,10 @@
 #include "hf_lib.h"
 #include "hf_precalc.h"
 
+#define ROL32(x, n) ((x<<n) | (x>>(32-n)))
+
 //Fonctions de comparaison
-uint16_t hf_cmp(uint16_t hf1, uint16_t hf2);
+int hf_cmp(uint16_t hf1, uint16_t hf2);
 uint16_t hf_min(uint16_t hf1, uint16_t hf2);
 uint16_t hf_max(uint16_t hf1, uint16_t hf2);
 
@@ -51,90 +53,68 @@ uint16_t hf_acos(uint16_t hf);
 static uint16_t reduce_radian_uword(uint32_t angle_rad_fixed, int fact);
 static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift);
 static uint16_t asinus_shiftable(uint16_t hf, uint32_t shift);
+static uint32_t square_root(uint32_t value);
+static int compare_half(const half_float *input1, const half_float *input2);
+static int check_int_half(const half_float *hf);
 
 /**
  * @brief Compare deux demi-flottants (IEEE 754 - half precision)
  *
- * Compare deux valeurs demi-précision et renvoie le résultat
- * sous forme d'un demi-flottant codé IEEE 754 :
- *  - +1.0  si hf1 > hf2
- *  - -1.0  si hf1 < hf2
- *  - +0.0 ou -0.0 si hf1 == hf2
- *  - qNaN si comparaison impossible (NaN détecté)
+ * Compare deux valeurs au format demi-précision IEEE et renvoie un code entier :
+ *   - +1  si hf1 > hf2
+ *   - -1  si hf1 < hf2
+ *   -  0  si hf1 == hf2
+ *   - -2  si comparaison impossible (NaN détecté)
  *
- * Conforme IEEE 754 :
- *  - NaN (quiet ou signaling) → retourne qNaN (aucune exception levée)
- *  - +0 et -0 considérés égaux
- *  - +/-Inf et subnormaux traités selon l'ordre total IEEE
- *  - Aucun signal d'exception matériel (environnement sans FPU)
+ * Comportement conforme IEEE 754 :
+ *  - NaN (quiet ou signaling) -> retourne -2 (aucune exception levée)
+ *  - +0 et -0 sont considérés égaux
+ *  - +/-Inf et subnormaux respectent l'ordre total IEEE
+ *  - Aucun signal d'exception matériel (implémentation logicielle pure)
  *
- * @param hf1 Premier demi-flottant
- * @param hf2 Second demi-flottant
- * @return Résultat au format demi-flottant IEEE 754
+ * @param hf1 Premier demi-flottant encodé sur 16 bits
+ * @param hf2 Second demi-flottant encodé sur 16 bits
+ * @return Code de comparaison (-2, -1, 0, +1)
  */
-uint16_t hf_cmp(uint16_t hf1, uint16_t hf2) {
-    uint16_t result = HF_ZERO_POS; //+0.0 par défaut (couvre +0==−0 et +/-Inf==+/-Inf)
+int hf_cmp(uint16_t hf1, uint16_t hf2) {
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
-
-    if(is_nan(input1) || is_nan(input2)) {
-        result = HF_NAN; //qNaN
-    }
-    else if(input1.sign != input2.sign && !(is_zero(input1) && is_zero(input2))) {
-        result = input1.sign ? HF_ONE_NEG : HF_ONE_POS; //négatif < positif
-    }
-    else if(input1.exp != input2.exp) {
-        result = ((input1.exp < input2.exp) ^ input1.sign) ? HF_ONE_NEG : HF_ONE_POS;
-    }
-    else if(input1.mant != input2.mant) {
-        result = ((input1.mant < input2.mant) ^ input1.sign) ? HF_ONE_NEG : HF_ONE_POS;
-    }
-    else if(input1.sign) {
-        result = HF_ZERO_NEG; //-0.0
-    }
-    //sinon result reste HF_ZERO_POS (égalité)
-
-    return result;
+    return compare_half(&input1, &input2);
 }
 
 /**
  * @brief Renvoie le minimum de deux demi-flottants (IEEE 754 - half precision)
  *
  * Compare deux demi-flottants et renvoie le plus petit au format IEEE 754.
- * Conforme IEEE :
- *  - NaN (quiet ou signaling) → retourne qNaN (aucune exception levée)
+ *
+ * Cas particuliers (IEEE 754):
+ *  - NaN (quiet ou signaling) -> retourne qNaN (aucune exception levée)
  *  - min(+0,-0) = -0
  *  - min(+Inf, valeur) = valeur
  *  - min(-Inf, valeur) = -Inf
  *
- * @param hf1 Premier demi-flottant
- * @param hf2 Second demi-flottant
+ * @param hf1 Premier demi-flottant encodé
+ * @param hf2 Second demi-flottant encodé
  * @return Le minimum au format demi-flottant IEEE 754
  */
 uint16_t hf_min(uint16_t hf1, uint16_t hf2) {
-    uint16_t result = hf1; //valeur par défaut
+    uint16_t result = hf1;
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
+    int cmp = compare_half(&input1, &input2);
 
-    if(is_nan(input1) || is_nan(input2)) {
-        result = HF_NAN; //qNaN
+    if(cmp == -2) {
+        //Propagation silencieuse du NaN
+        result = HF_NAN;
     }
-    else if(is_zero(input1) && is_zero(input2)) {
-        result = HF_ZERO_NEG; //min(+0,-0) = -0
+    else if(cmp == 0 && is_zero(&input1) && is_zero(&input2)) {
+        //Cas +0 / -0 : on renvoie toujours -0
+        result = (input1.sign || input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
     }
-    else if(input1.sign != input2.sign) {
-        result = input1.sign ? hf1 : hf2; //négatif < positif
+    else if(cmp > 0) {
+        //hf1 > hf2, donc min = hf2
+        result = hf2;
     }
-    else if(input1.exp != input2.exp) {
-        result = ((input1.exp < input2.exp) ^ input1.sign) ? hf1 : hf2; //ordre selon exp et signe
-    }
-    else if(input1.mant != input2.mant) {
-        result = ((input1.mant < input2.mant) ^ input1.sign) ? hf1 : hf2; //ordre selon mantisse et signe
-    }
-    else if(input1.sign) {
-        result = hf1; //préserve le signe négatif si égalité totale
-    }
-    //sinon result reste hf1 (+0 ou égalité parfaite)
 
     return result;
 }
@@ -143,40 +123,35 @@ uint16_t hf_min(uint16_t hf1, uint16_t hf2) {
  * @brief Renvoie le maximum de deux demi-flottants (IEEE 754 - half precision)
  *
  * Compare deux demi-flottants et renvoie le plus grand au format IEEE 754.
- * Conforme IEEE :
- *  - NaN (quiet ou signaling) → retourne qNaN (aucune exception levée)
+ *
+ * Cas particuliers (IEEE 754):
+ *  - NaN (quiet ou signaling) -> retourne qNaN (aucune exception levée)
  *  - max(+0,-0) = +0
  *  - max(+Inf, valeur) = +Inf
  *  - max(-Inf, valeur) = valeur
  *
- * @param hf1 Premier demi-flottant
- * @param hf2 Second demi-flottant
+ * @param hf1 Premier demi-flottant encodé
+ * @param hf2 Second demi-flottant encodé
  * @return Le maximum au format demi-flottant IEEE 754
  */
 uint16_t hf_max(uint16_t hf1, uint16_t hf2) {
-    uint16_t result = hf1; //valeur par défaut
+    uint16_t result = hf1;
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
+    int cmp = compare_half(&input1, &input2);
 
-    if(is_nan(input1) || is_nan(input2)) {
-        result = HF_NAN; //qNaN
+    if(cmp == -2) {
+        //Propagation silencieuse du NaN
+        result = HF_NAN;
     }
-    else if(is_zero(input1) && is_zero(input2)) {
-        result = HF_ZERO_POS; //max(+0,-0) = +0
+    else if(cmp == 0 && is_zero(&input1) && is_zero(&input2)) {
+        //Cas +0 / -0 : on renvoie toujours +0
+        result = (input1.sign && input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
     }
-    else if(input1.sign != input2.sign) {
-        result = input1.sign ? hf2 : hf1; //positif > négatif
+    else if(cmp < 0) {
+        //hf1 < hf2, donc max = hf2
+        result = hf2;
     }
-    else if(input1.exp != input2.exp) {
-        result = ((input1.exp > input2.exp) ^ input1.sign) ? hf1 : hf2; //ordre selon exp et signe
-    }
-    else if(input1.mant != input2.mant) {
-        result = ((input1.mant > input2.mant) ^ input1.sign) ? hf1 : hf2; //ordre selon mantisse et signe
-    }
-    else if(!input1.sign) {
-        result = hf1; //préserve le signe positif si égalité totale
-    }
-    //sinon result reste hf1 (-0 ou égalité parfaite)
 
     return result;
 }
@@ -194,7 +169,7 @@ uint16_t hf_int(uint16_t hf) {
     half_float result = decompose_half(hf);
     
     //Traitement uniquement pour les nombres non spéciaux
-    if(!is_nan(result) && !is_infinity(result) && !is_zero(result)) {
+    if(!is_nan(&result) && !is_infinity(&result) && !is_zero(&result)) {
         //Si l'exposant est négatif, la partie entière est 0
         if(result.exp < 0) {
             result.mant = 0;
@@ -212,8 +187,8 @@ uint16_t hf_int(uint16_t hf) {
         }
         //Si exp >= 10, le nombre est déjà entier (pas de bits fractionnaires)
     }
-    
-    return compose_half(result);
+
+    return compose_half(&result);
 }
 
 /**
@@ -263,11 +238,11 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
     result.mant = 1;
 
     //Gestion unifiée des NaN - propager le premier NaN rencontré
-    if(is_nan(input1) || is_nan(input2)) {
-        result.sign = is_nan(input1) ? input1.sign : input2.sign;
-    } else if(is_infinity(input1) || is_infinity(input2)) {
+    if(is_nan(&input1) || is_nan(&input2)) {
+        result.sign = is_nan(&input1) ? input1.sign : input2.sign;
+    } else if(is_infinity(&input1) || is_infinity(&input2)) {
         //Gestion des cas infinis
-        if(is_infinity(input1) && is_infinity(input2)) {
+        if(is_infinity(&input1) && is_infinity(&input2)) {
             //Les deux sont infinis
             if(input1.sign != input2.sign) {
                 //Infini positif + Infini négatif = NaN négatif
@@ -278,9 +253,9 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
             }
         } else {
             //Un seul est infini - le résultat est cet infini
-            result = is_infinity(input1) ? input1 : input2;
+            result = is_infinity(&input1) ? input1 : input2;
         }
-    } else if(is_zero(input1) && is_zero(input2)) {
+    } else if(is_zero(&input1) && is_zero(&input2)) {
         //Cas spécial -0 + -0 = -0
         result.sign = (input1.sign && input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
         result.exp = 0;
@@ -307,7 +282,7 @@ uint16_t hf_add(uint16_t hf1, uint16_t hf2) {
         normalize_and_round(&result);
     }
 
-    return compose_half(result);
+    return compose_half(&result);
 }
 
 /**
@@ -333,32 +308,28 @@ uint16_t hf_mul(uint16_t hf1, uint16_t hf2) {
     half_float result;
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
-
+    
+    //Initialisation par défaut (NaN positif - cas le plus fréquent pour les cas spéciaux)
+    result.sign = HF_ZERO_POS;
+    result.exp = HF_EXP_FULL;
+    result.mant = 1;
+    
     //Gestion unifiée des NaN - propager le premier NaN rencontré
-    if(is_nan(input1) || is_nan(input2)) {
-        half_float *nan_source = is_nan(input1) ? &input1 : &input2;
-        result.sign = nan_source->sign;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } else if((is_infinity(input1) && is_zero(input2)) ||
-              (is_infinity(input2) && is_zero(input1))) {
+    if(is_nan(&input1) || is_nan(&input2)) {
+        result.sign = is_nan(&input1) ? input1.sign : input2.sign;
+    } else if((is_infinity(&input1) && is_zero(&input2)) ||
+              (is_infinity(&input2) && is_zero(&input1))) {
         //Inf * 0 = NaN négatif selon la convention de la référence
         result.sign = HF_ZERO_NEG;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
     } else {
         //Signe du résultat
         result.sign = input1.sign ^ input2.sign;
-        
-        if(is_zero(input1) || is_zero(input2)) {
+        result.mant = 0;
+
+        if(is_zero(&input1) || is_zero(&input2)) {
             //Résultat = zéro
             result.exp = -HF_EXP_BIAS;
-            result.mant = 0;
-        } else if(is_infinity(input1) || is_infinity(input2)) {
-            //Résultat = infini
-            result.exp = HF_EXP_FULL;
-            result.mant = 0;
-        } else {
+        } else if(!is_infinity(&input1) && !is_infinity(&input2)) {
             //Multiplication normale
             uint32_t mult_result = (uint32_t)(input1.mant * input2.mant);
             
@@ -367,15 +338,15 @@ uint16_t hf_mul(uint16_t hf1, uint16_t hf2) {
             
             normalize_and_round(&result);
         }
+        //Par défaut: Résultat = infini
     }
 
-    //Composition du résultat final
-    return compose_half(result);
+    return compose_half(&result);
 }
 
 /**
  * @brief Divise deux demi-flottants
- * 
+ *
  * @param hf1 Premier demi-flottant (dividende)
  * @param hf2 Second demi-flottant (diviseur)
  * @return Le résultat de la division sous forme de demi-flottant
@@ -385,48 +356,36 @@ uint16_t hf_div(uint16_t hf1, uint16_t hf2) {
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
     
-    //Initialisation par défaut: division normale
+    //Initialisation par défaut: NaN positif (cas le plus fréquent pour les cas spéciaux)
     result.sign = input1.sign ^ input2.sign;
-    result.exp = input1.exp - input2.exp;
+    result.exp = HF_EXP_FULL;
+    result.mant = 1;
     
     //Gestion unifiée des NaN - propager le premier NaN rencontré
-    if(is_nan(input1) || is_nan(input2)) {
-        half_float *nan_source = is_nan(input1) ? &input1 : &input2;
-        result.sign = nan_source->sign;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } else if(is_infinity(input1) && is_infinity(input2)) {
+    if(is_nan(&input1) || is_nan(&input2)) {
+        result.sign = is_nan(&input1) ? input1.sign : input2.sign;
+    } else if(is_infinity(&input1) && is_infinity(&input2)) {
         //Inf / Inf = NaN négatif
         result.sign = HF_ZERO_NEG;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } else if(is_zero(input1) && is_zero(input2)) {
-        //0 / 0 = NaN
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } else if(is_infinity(input1)) {
-        //Inf / valeur finie = Inf
-        result.exp = HF_EXP_FULL;
+    } else if(is_zero(&input1) && is_zero(&input2)) {
+        //0 / 0 = NaN (sign et autres déjà ok)
+    } else if(is_infinity(&input1) || is_zero(&input2)) {
+        //Inf / valeur finie = Inf ou Fini / 0 = Inf
         result.mant = 0;
-    } else if(is_infinity(input2) || is_zero(input1)) {
+    } else if(is_infinity(&input2) || is_zero(&input1)) {
         //Fini / Inf = 0 ou 0 / Fini = 0
         result.exp = -HF_EXP_BIAS;
         result.mant = 0;
-    } else if(is_zero(input2)) {
-        //Fini / 0 = Inf
-        result.exp = HF_EXP_FULL;
-        result.mant = 0;
     } else {
-        //Division arithmétique normale avec déclaration+affectation directe
+        //Division arithmétique normale
         uint32_t dividend = input1.mant << (HF_MANT_BITS + HF_PRECISION_SHIFT);
-
+        result.exp = input1.exp - input2.exp;
         result.mant = dividend / input2.mant;
         if(dividend % input2.mant) result.mant |= 1;
-
         normalize_and_round(&result);
     }
-    
-    return compose_half(result);
+
+    return compose_half(&result);
 }
 
 /**
@@ -439,28 +398,24 @@ uint16_t hf_inv(uint16_t hf) {
     half_float result;
     half_float input = decompose_half(hf);
     
+    //Initialisation par défaut: préserve le signe et prépare pour les cas spéciaux
+    result.sign = input.sign;
+    result.exp = HF_EXP_FULL;
+    result.mant = 1;
+    
     //Gestion des cas spéciaux
-    if(is_nan(input)) {
-        //NaN -> propager le NaN
-        result.sign = input.sign;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } else if(is_infinity(input)) {
+    if(is_infinity(&input)) {
         //1/Inf = 0 (avec le signe)
-        result.sign = input.sign;
         result.exp = -HF_EXP_BIAS;
         result.mant = 0;
-    } else if(is_zero(input)) {
+    } else if(is_zero(&input)) {
         //1/0 = Inf (avec le signe)
-        result.sign = input.sign;
-        result.exp = HF_EXP_FULL;
         result.mant = 0;
-    } else {
+    } else if(!is_nan(&input)) {
         //Créer 1.0 avec bit implicite: mantisse = 1.0 en format étendu
         //input.mant contient déjà le bit implicite, donc dividend doit aussi
         uint32_t dividend = (1U << (HF_MANT_BITS + HF_PRECISION_SHIFT)) << (HF_MANT_BITS + HF_PRECISION_SHIFT);
         
-        result.sign = input.sign;
         //Pour 1/x avec exposant débiaisé: exp_result = -exp_input
         result.exp = -input.exp;
 
@@ -469,8 +424,9 @@ uint16_t hf_inv(uint16_t hf) {
         
         normalize_and_round(&result);
     }
-    
-    return compose_half(result);
+    //Gestion du NaN: valeurs déjà bonnes par défaut
+
+    return compose_half(&result);
 }
 
 /**
@@ -494,21 +450,19 @@ uint16_t hf_sqrt(uint16_t hf) {
     result.mant = 1;
     
     //Cas spéciaux IEEE 754
-    if(is_zero(input)) {
+    if(is_zero(&input)) {
         //sqrt(+/-0) -> +/-0
         result.sign = input.sign;
         result.exp  = input.exp;
         result.mant = 0;
     }
-    else if(is_infinity(input) && !input.sign) {
+    else if(is_infinity(&input) && !input.sign) {
         //sqrt(+inf) -> +inf
         result.mant = 0;  //exp déjà FULL, sign déjà positif
     }
-    else if(!input.sign && !is_infinity(input) && !is_nan(input)) {
+    else if(!input.sign && !is_infinity(&input) && !is_nan(&input)) {
         //Calcul arithmétique normal (x > 0 fini, non-zéro déjà exclu)
-        int loop = 16;
         uint32_t root = 0;
-        uint32_t rest = 0;
         uint32_t value = (uint32_t)(input.mant << 15);
         
         //Exposant impair: ajustement de l'exposant à pair + mantisse
@@ -517,16 +471,9 @@ uint16_t hf_sqrt(uint16_t hf) {
             input.exp--;
         }
         
-        //Algorithme de racine carrée par décalage
-        while(--loop >= 0) {
-            rest = (rest << 2) + ((value >> (loop * 2)) & 3);
-            root <<= 1;
-            if(rest >= (root << 1) + 1) {
-                rest -= (root << 1) + 1;
-                root++;
-            }
-        }
-        
+        //Calcul de la racine carrée
+        root = square_root(value);
+
         if(root > 0) {
             result.exp  = input.exp / 2;
             result.mant = (int32_t)root;
@@ -534,8 +481,8 @@ uint16_t hf_sqrt(uint16_t hf) {
         }
     }
     //NaN et -x (incluant -inf) -> NaN: déjà correct par l'initialisation
-    
-    return compose_half(result);
+
+    return compose_half(&result);
 }
 
 /**
@@ -558,19 +505,17 @@ uint16_t hf_rsqrt(uint16_t hf) {
     result.mant = 0;
    
     //Cas spéciaux IEEE 754
-    if(is_nan(input) || (input.sign && !is_zero(input))) {
+    if(is_nan(&input) || (input.sign && !is_zero(&input))) {
         //NaN ou x<0 (hors -0, incluant -inf) -> NaN
         result.mant = 1;
     }
-    else if(is_infinity(input)) {
+    else if(is_infinity(&input)) {
         //rsqrt(+inf) -> +0
         result.exp  = 0;
     }
-    else if(!is_zero(input)) {
+    else if(!is_zero(&input)) {
         //Calcul arithmétique normal: 1/sqrt(x)
-        int loop = 16;
         uint32_t root = 0;
-        uint32_t rest = 0;
         uint32_t value = (uint32_t)(input.mant << 15);
        
         //Exposant impair: ajustement de l'exposant à pair + mantisse
@@ -578,17 +523,10 @@ uint16_t hf_rsqrt(uint16_t hf) {
             value <<= 1;
             input.exp--;
         }
-       
-        //Algorithme de racine carrée par décalage
-        while(--loop >= 0) {
-            rest = (rest << 2) + ((value >> (loop * 2)) & 3);
-            root <<= 1;
-            if(rest >= (root << 1) + 1) {
-                rest -= (root << 1) + 1;
-                root++;
-            }
-        }
-       
+
+        //Calcul de la racine carrée
+        root = square_root(value);
+              
         if(root > 0) {
             uint32_t one = 1U << 31;
             result.mant = (int32_t)(one / root);
@@ -597,8 +535,8 @@ uint16_t hf_rsqrt(uint16_t hf) {
         }
     }
     //rsqrt(+/-0) -> +inf: déjà correct par l'initialisation
-   
-    return compose_half(result);
+
+    return compose_half(&result);
 }
 
 /**
@@ -617,19 +555,18 @@ uint16_t hf_ln(uint16_t hf) {
 
     //Initialisation par défaut - évite le branchement else
     result.sign = HF_ZERO_POS;
+    result.exp = HF_EXP_FULL;  //Utilisé par les cas spéciaux (inf, NaN)
+    result.mant = 0;
 
     //Gestion des cas spéciaux
-    if(is_zero(input)) {
-        //ln(0) = -inf
+    if(is_zero(&input)) {
+        //ln(0) = -inf, exp et mant déjà corrects
         result.sign = HF_ZERO_NEG;
-        result.exp = HF_EXP_FULL;
-        result.mant = 0;
-    } else if(is_nan(input) || input.sign) {
-        //ln(NaN) = NaN, ln(négatif) = NaN
+    } else if(is_nan(&input) || input.sign) {
+        //ln(NaN) = NaN, ln(négatif) = NaN, exp déjà correct
         result.sign = input.sign;
-        result.exp = HF_EXP_FULL;
         result.mant = 1;
-    } else if(is_infinity(input)) {
+    } else if(is_infinity(&input)) {
         //ln(+inf) = +inf
         result = input;
     } else {
@@ -652,7 +589,7 @@ uint16_t hf_ln(uint16_t hf) {
         normalize_and_round(&result);
     }
 
-    return compose_half(result);
+    return compose_half(&result);
 }
 
 /**
@@ -672,63 +609,64 @@ uint16_t hf_ln(uint16_t hf) {
 uint16_t hf_exp(uint16_t hf) {
     half_float result;
     half_float input = decompose_half(hf);
-    
+
+    //Initialisation par défaut
+    result.sign = HF_ZERO_POS; //L'exponentielle est toujours positive (sauf NaN)
+    result.exp = 0;
+    result.mant = 0;
+
     //Gestion des cas spéciaux
-    if(is_nan(input)) {
+    if(is_nan(&input)) {
         //Propager le NaN avec son signe original
         result.sign = input.sign;
         result.exp = HF_EXP_FULL;
         result.mant = 1;
+    } else if(is_infinity(&input)) {
+        if(!input.sign) result.exp = HF_EXP_FULL; //exp(+inf) = +inf
+        //exp(-inf) = 0, valeurs déjà correctes par défaut
     } else {
-        result.sign = HF_ZERO_POS; //L'exponentielle est toujours positive pour les cas non-NaN
+        //Test d'overflow/underflow unifié: |x| > ~12
+        const int32_t THRESHOLD_MANT = (3 * (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT))) >> 1;
+        int overflow = (input.exp > 3) || (input.exp == 3 && input.mant >= THRESHOLD_MANT);
         
-        if(is_infinity(input)) {
-            result.mant = 0;
-            result.exp = input.sign ? 0 : HF_EXP_FULL; //0 ou +inf
+        if(overflow) {
+            //Overflow positif -> +inf, underflow négatif -> 0
+            if(!input.sign) result.exp = HF_EXP_FULL; //exp(+large) = +inf
+            //mant et exp déjà corrects pour exp(-large) = 0
         } else {
-            //Test d'overflow/underflow unifié: |x| > ~12
-            const int32_t THRESHOLD_MANT = (3 * (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT))) >> 1;
-            int overflow = (input.exp > 3) || (input.exp == 3 && input.mant >= THRESHOLD_MANT);
+            int32_t x_fixed = input.sign ? -input.mant : input.mant;
+            int32_t k_exp, r_fixed, frac;
+            int index;
             
-            if(overflow) {
-                //Overflow positif -> +inf, underflow négatif -> 0
-                result.exp = input.sign ? 0 : HF_EXP_FULL;
-                result.mant = 0;
-            } else {
-                int32_t x_fixed = input.sign ? -input.mant : input.mant;
-                int32_t k_exp, r_fixed, frac;
-                int index;
-                
-                //Ajustement selon l'exposant pour obtenir la vraie valeur
-                x_fixed = (input.exp >= 0) ? (x_fixed << input.exp) : (x_fixed >> -input.exp);
-                
-                //Réduction à [0, ln(2)]: k = floor(x/ln(2)), r = x - k*ln(2)
-                k_exp = x_fixed / LNI_2;
-                r_fixed = x_fixed - k_exp * LNI_2;
-                
-                if(r_fixed < 0) {
-                    k_exp--;
-                    r_fixed += LNI_2;
-                }
-                
-                //Index dans la table avec protection
-                index = (r_fixed * EXP_TABLE_SIZE) / LNI_2;
-                if(index >= EXP_TABLE_SIZE) index = EXP_TABLE_SIZE - 1;
-                
-                //Interpolation linéaire
-                result.mant = exp_table[index];
-                if(index < EXP_TABLE_SIZE - 1) {
-                    frac = ((r_fixed * EXP_TABLE_SIZE) % LNI_2) << 8;
-                    result.mant += ((exp_table[index + 1] - result.mant) * frac / LNI_2) >> 8;
-                }
-                
-                result.exp = k_exp;
-                normalize_and_round(&result);
+            //Ajustement selon l'exposant pour obtenir la vraie valeur
+            x_fixed = (input.exp >= 0) ? (x_fixed << input.exp) : (x_fixed >> -input.exp);
+            
+            //Réduction à [0, ln(2)]: k = floor(x/ln(2)), r = x - k*ln(2)
+            k_exp = x_fixed / LNI_2;
+            r_fixed = x_fixed - k_exp * LNI_2;
+            
+            if(r_fixed < 0) {
+                k_exp--;
+                r_fixed += LNI_2;
             }
+            
+            //Index dans la table avec protection
+            index = (r_fixed * EXP_TABLE_SIZE) / LNI_2;
+            if(index >= EXP_TABLE_SIZE) index = EXP_TABLE_SIZE - 1;
+            
+            //Interpolation linéaire
+            result.mant = exp_table[index];
+            if(index < EXP_TABLE_SIZE - 1) {
+                frac = ((r_fixed * EXP_TABLE_SIZE) % LNI_2) << 8;
+                result.mant += ((exp_table[index + 1] - result.mant) * frac / LNI_2) >> 8;
+            }
+            
+            result.exp = k_exp;
+            normalize_and_round(&result);
         }
     }
 
-    return compose_half(result);
+    return compose_half(&result);
 }
 
 /**
@@ -737,6 +675,14 @@ uint16_t hf_exp(uint16_t hf) {
  * Cette fonction calcule hfbase^hfexp où hfbase et hfexp sont des demi-flottants (half-float).
  * Elle utilise la formule hfbase^hfexp = e^(hfexp * ln(hfbase)) pour effectuer le calcul.
  *
+ * Conforme IEEE 754 et std::pow pour les cas spéciaux :
+ *  - x^0 = 1 (même si x = NaN), 1^y = 1, (-1)^+/-inf = 1
+ *  - (-1)^entier : signe selon parité
+ *  - base négative avec exposant non-entier -> NaN
+ *  - 0^x : x>0 -> 0 ; x<0 -> +inf ; signe -0 préservé pour exposants entiers impairs
+ *  - (+/-inf)^x : x>0 -> +/-inf ; x<0 -> +/-0 ; signe selon parité si base = -inf et x entier
+ *  - x^(+/-inf) : |x|>1 -> (+/-inf)-> +inf / (-inf)-> 0 ; |x|<1 -> (+/-inf)-> 0 / (-inf)-> +inf ; |x|=1 -> 1
+ * 
  * @param hfbase Le demi-flottant représentant la base
  * @param hfexp Le demi-flottant représentant l'exposant
  * @return Le résultat de hfbase^hfexp sous forme de demi-flottant
@@ -744,148 +690,150 @@ uint16_t hf_exp(uint16_t hf) {
 uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
     half_float result;
     half_float inputbase = decompose_half(hfbase);
-    half_float inputexp = decompose_half(hfexp);
-    
-    //Initialisation par défaut: résultat = 1.0 (cas IEEE 754 majoritaires)
+    half_float inputexp  = decompose_half(hfexp);
+
+    //Initialisation par défaut : 1.0
     result.sign = HF_ZERO_POS;
-    result.exp = 0;
+    result.exp  = 0;
     result.mant = 1 << (HF_MANT_BITS + HF_PRECISION_SHIFT);
-    
-    //Cas spéciaux IEEE 754: base = 1.0 ou exposant = 0
-    if((inputbase.exp == 0 && inputbase.mant == (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT)) && inputbase.sign == 0) ||
-       is_zero(inputexp)) {
-        //1^(n'importe quoi) = 1 ou N'importe quoi^0 = 1 - garder l'initialisation
-    } else if(is_nan(inputbase) || is_nan(inputexp)) {
-        //Gestion unifiée des NaN - propager le premier NaN rencontré
-        half_float *nan_source = is_nan(inputbase) ? &inputbase : &inputexp;
-        result.sign = nan_source->sign;
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } else if(is_zero(inputbase)) {
-        //Gestion 0^x selon signe de x
-        if(inputexp.sign == 0) {
-            result = inputbase; //0^(positif) = 0
-        } else {
-            result.exp = HF_EXP_FULL;
-            result.mant = 0; //0^(négatif) = inf
-        }
-    } else if(is_infinity(inputbase) || is_infinity(inputexp)) {
-        if(is_infinity(inputbase)) {
-            //Cas (+/-inf)^x
-            if(inputexp.sign == 0) {
-                //+/-inf^(positif) 
-                if(inputbase.sign == 0) {
-                    result = inputbase; //+inf^(positif) = +inf
-                } else {
-                    //(-inf)^(positif) - vérifier parité si entier
-                    if(inputexp.exp >= 0) {
-                        int32_t int_part = inputexp.mant >> (HF_MANT_BITS + HF_PRECISION_SHIFT - inputexp.exp);
-                        result.sign = (int_part & 1) ? inputbase.sign : 0;
+
+    //Rien à faire si x^0 : on garde 1.0
+    if(!is_zero(&inputexp)) {
+        uint16_t abs_base_bits = (uint16_t)(hfbase & ~HF_MASK_SIGN);
+        int exp_int_part  = check_int_half(&inputexp);
+
+        //|base| == 1 : tous les cas spéciaux (+/-1, +/-inf, NaN)
+        if(abs_base_bits == HF_ONE_POS) {
+            //1^+/-inf = 1, (-1)^+/-inf = 1, 1^NaN = 1, (-1)^NaN = 1 (conforme std::pow)
+            int is_exp_inf_or_nan = is_infinity(&inputexp) || is_nan(&inputexp);
+            if(!is_exp_inf_or_nan) {
+                if(inputbase.sign) {
+                    //(-1)^y
+                    if(exp_int_part < 0) {
+                        //(-1)^non-entier = NaN
+                        result.exp  = HF_EXP_FULL;
+                        result.mant = 1;
+                    } else {
+                        //(-1)^entier : signe selon parité, magnitude = 1
+                        result.sign = (exp_int_part & 1) ? HF_ZERO_NEG : HF_ZERO_POS;
                     }
-                    result.exp = HF_EXP_FULL;
-                    result.mant = 0;
                 }
-            } else {
-                //+/-inf^(négatif) = 0 avec signe selon parité
-                result.exp = -HF_EXP_BIAS;
+                //(+1)^y = 1 : déjà initialisé
+            }
+            //Cas +/-inf ou NaN : garder 1.0
+        }
+        else {
+            //NaN propagé si l'un est NaN (hors cas |base|==1 géré ci-dessus)
+            if(is_nan(&inputbase) || is_nan(&inputexp)) {
+                result.exp  = HF_EXP_FULL;
+                result.mant = 1;
+            }
+            //0^x (x != 0)
+            else if(is_zero(&inputbase)) {
+                //x<0 -> +inf ; x>0 -> 0 ; signe -0 si base négative et exposant entier impair
+                result.exp  = inputexp.sign ? HF_EXP_FULL : -HF_EXP_BIAS;
                 result.mant = 0;
-                if(inputbase.sign && inputexp.exp >= 0) {
-                    int32_t int_part = inputexp.mant >> (HF_MANT_BITS + HF_PRECISION_SHIFT - inputexp.exp);
-                    result.sign = (int_part & 1) ? HF_ZERO_NEG : HF_ZERO_POS;
+                result.sign = (inputbase.sign && exp_int_part >= 0 && (exp_int_part & 1)) ? HF_ZERO_NEG : HF_ZERO_POS;
+            }
+            //(+/-Inf)^x (x != 0)
+            else if(is_infinity(&inputbase)) {
+                //x<0 -> +/-0 ; x>0 -> +/-inf ; signe si base = -inf et exposant entier impair
+                result.exp  = inputexp.sign ? -HF_EXP_BIAS : HF_EXP_FULL;
+                result.mant = 0;
+                result.sign = (inputbase.sign && exp_int_part >= 0 && (exp_int_part & 1)) ? HF_ZERO_NEG : HF_ZERO_POS;
+            }
+            //x^(+/-Inf) (|x| != 1)
+            else if(is_infinity(&inputexp)) {
+                if(abs_base_bits > HF_ONE_POS) {
+                    //|x| > 1 : +inf si +inf ; 0 si -inf
+                    result.exp = inputexp.sign ? -HF_EXP_BIAS : HF_EXP_FULL;
+                } else if(abs_base_bits < HF_ONE_POS) {
+                    //|x| < 1 : 0 si +inf ; +inf si -inf
+                    result.exp = inputexp.sign ? HF_EXP_FULL : -HF_EXP_BIAS;
                 }
-            }
-        } else {
-            //Cas x^(+/-inf) selon IEEE 754
-            uint16_t abs_base = inputbase.sign ? (hfbase ^ (1 << HF_SIGN_BITS)) : hfbase;
-            uint16_t one_hf = (0 << HF_SIGN_BITS) | ((HF_EXP_BIAS) << HF_MANT_BITS) | 0; //1.0 en half-float
-            
-            if(abs_base > one_hf) {
-                //|x| > 1: exp=+inf -> +inf, exp=-inf -> 0
-                result.exp = inputexp.sign ? -HF_EXP_BIAS : HF_EXP_FULL;
-                result.mant = 0;
-            } else if(abs_base < one_hf) {
-                //|x| < 1: exp=+inf -> 0, exp=-inf -> +inf
-                result.exp = inputexp.sign ? HF_EXP_FULL : -HF_EXP_BIAS;
                 result.mant = 0;
             }
-            //|x| = 1: garder l'initialisation result = 1
+            //x^1 = x
+            else if(inputexp.exp == 0 && inputexp.mant == result.mant && inputexp.sign == 0) {
+        		//x^1 = x (cas spécial optimisé)
+                result = inputbase;
+            }
+            //Base négative avec exposant non-entier -> NaN
+            else if(inputbase.sign && exp_int_part < 0) {
+                result.exp  = HF_EXP_FULL;
+                result.mant = 1;
+            }
+            else {
+	            //Calcul général via ln/exp sur |base|, puis ajuste le signe si base < 0 et exposant entier impair
+                int result_negative = 0;
+                int32_t ln_base_fixed, exp_fixed, exp_ln_fixed, k_exp, r_fixed;
+                int idx_ln, idx_exp, frac;
+
+                result.sign = HF_ZERO_POS;
+                if(inputbase.sign && exp_int_part >= 0) result.sign = (exp_int_part & 1) ? HF_ZERO_NEG : HF_ZERO_POS;
+
+        		//Normaliser la base pour ln
+                normalize_denormalized_mantissa(&inputbase);
+
+        		//CALCUL DIRECT ln(base) avec déclaration+affectation optimisée
+                idx_ln = (inputbase.mant >> HF_PRECISION_SHIFT) & 0x3ff;
+                ln_base_fixed = inputbase.exp * LNI_2 + ln_table[idx_ln];
+
+        		//Interpolation ln avec calcul de frac combiné
+                if(idx_ln < LN_TABLE_SIZE - 1) {
+                    frac = inputbase.mant & ((1 << HF_PRECISION_SHIFT) - 1);
+                    ln_base_fixed += ((ln_table[idx_ln + 1] - ln_table[idx_ln]) * frac) >> HF_PRECISION_SHIFT;
+                }
+
+                //CALCUL exp * ln(|base|)
+                exp_fixed   = (inputexp.exp >= 0) ? (inputexp.mant << inputexp.exp) : (inputexp.mant >> -inputexp.exp);
+        
+        		//Multiplication Q15*Q15->Q15 avec signe appliqué directement
+                exp_ln_fixed = (int32_t)(((int64_t)exp_fixed * ln_base_fixed) >> 15);
+		        if(inputexp.sign) {
+		            exp_ln_fixed = -exp_ln_fixed;
+		        }
+        
+		        //Gestion signe avec valeur absolue combinée
+		        if(exp_ln_fixed < 0) {
+		            result_negative = 1;
+		            exp_ln_fixed = -exp_ln_fixed;
+		        }
+        
+        		//CALCUL exp() avec réduction modulo optimisée
+                k_exp  = exp_ln_fixed / LNI_2;
+                r_fixed = exp_ln_fixed - k_exp * LNI_2;
+        
+		        if(r_fixed < 0) {
+		            k_exp--;
+		            r_fixed += LNI_2;
+		        }
+        
+		        //Index exp_table avec protection simplifiée
+                idx_exp = (r_fixed * EXP_TABLE_SIZE) / LNI_2;
+                if(idx_exp >= EXP_TABLE_SIZE) idx_exp = EXP_TABLE_SIZE - 1;
+
+        		//Interpolation exp avec résultat direct
+                result.mant = exp_table[idx_exp];
+                if(idx_exp < EXP_TABLE_SIZE - 1) {
+                    frac = ((r_fixed * EXP_TABLE_SIZE) % LNI_2) << 8;
+                    result.mant += ((exp_table[idx_exp + 1] - result.mant) * frac / LNI_2) >> 8;
+                }
+
+                result.exp  = k_exp;
+
+                //Inversion si exposant négatif (exp_ln_fixed < 0 à l'origine)
+                if(result_negative && result.mant != 0) {
+                    result.mant = (int32_t)((1U << 30) / result.mant);
+                    result.exp  = -result.exp;
+                }
+
+                normalize_and_round(&result);
+            }
         }
-    } else if(inputexp.exp == 0 && inputexp.mant == (1 << (HF_MANT_BITS + HF_PRECISION_SHIFT)) && inputexp.sign == 0) {
-        //x^1 = x (cas spécial optimisé)
-        result = inputbase;
-    } else if(inputbase.sign && (inputexp.exp != -HF_EXP_BIAS || inputexp.mant != 0)) {
-        //Base négative avec exposant non-zéro = NaN
-        result.exp = HF_EXP_FULL;
-        result.mant = 1;
-        result.sign = inputbase.sign;
-    } else {
-        //OPTIMISATION: Algorithme direct inspiré de hf_ln et hf_exp
-        //Déclarations avec affectations directes pour réduire les opérations
-        int result_negative = 0;
-        int32_t ln_base_fixed, exp_fixed, exp_ln_fixed, k_exp, r_fixed;
-        int idx_ln, idx_exp, frac;
-        
-        //Normaliser la base pour ln
-        normalize_denormalized_mantissa(&inputbase);
-        
-        //CALCUL DIRECT ln(base) avec déclaration+affectation optimisée
-        idx_ln = (inputbase.mant >> HF_PRECISION_SHIFT) & 0x3ff;
-        ln_base_fixed = inputbase.exp * LNI_2 + ln_table[idx_ln];
-        
-        //Interpolation ln avec calcul de frac combiné
-        if(idx_ln < LN_TABLE_SIZE - 1) {
-            frac = inputbase.mant & ((1 << HF_PRECISION_SHIFT) - 1);
-            ln_base_fixed += ((ln_table[idx_ln + 1] - ln_table[idx_ln]) * frac) >> HF_PRECISION_SHIFT;
-        }
-        
-        //CALCUL exp * ln(base) avec ajustement exposant intégré
-        exp_fixed = (inputexp.exp >= 0) ? (inputexp.mant << inputexp.exp) : (inputexp.mant >> -inputexp.exp);
-        
-        //Multiplication Q15*Q15->Q15 avec signe appliqué directement
-        exp_ln_fixed = (int32_t)(((int64_t)exp_fixed * ln_base_fixed) >> 15);
-        if(inputexp.sign) {
-            exp_ln_fixed = -exp_ln_fixed;
-        }
-        
-        //Gestion signe avec valeur absolue combinée
-        if(exp_ln_fixed < 0) {
-            result_negative = 1;
-            exp_ln_fixed = -exp_ln_fixed;
-        }
-        
-        //CALCUL exp() avec réduction modulo optimisée
-        k_exp = exp_ln_fixed / LNI_2;
-        r_fixed = exp_ln_fixed - k_exp * LNI_2;
-        
-        if(r_fixed < 0) {
-            k_exp--;
-            r_fixed += LNI_2;
-        }
-        
-        //Index exp_table avec protection simplifiée
-        idx_exp = (r_fixed * EXP_TABLE_SIZE) / LNI_2;
-        if(idx_exp >= EXP_TABLE_SIZE) idx_exp = EXP_TABLE_SIZE - 1;
-        
-        //Interpolation exp avec résultat direct
-        result.mant = exp_table[idx_exp];
-        if(idx_exp < EXP_TABLE_SIZE - 1) {
-            frac = ((r_fixed * EXP_TABLE_SIZE) % LNI_2) << 8;
-            result.mant += ((exp_table[idx_exp + 1] - result.mant) * frac / LNI_2) >> 8;
-        }
-        
-        result.exp = k_exp;
-        result.sign = HF_ZERO_POS;
-        
-        //Inversion si exposant négatif avec constante optimisée
-        if(result_negative && result.mant != 0) {
-            result.mant = (int32_t)((1U << 30) / result.mant);
-            result.exp = -result.exp;
-        }
-        
-        normalize_and_round(&result);
     }
-    
-    return compose_half(result);
+
+    return compose_half(&result);
 }
 
 /**
@@ -945,8 +893,8 @@ uint16_t hf_tan(uint16_t hfangle) {
     result.sign = HF_ZERO_POS;
     result.mant = 0;
 
-    if(is_nan(angle_hf) || is_infinity(angle_hf)) {
-        if(is_nan(angle_hf)) {
+    if(is_nan(&angle_hf) || is_infinity(&angle_hf)) {
+        if(is_nan(&angle_hf)) {
             //Propager le signe original pour les NaN
             result.sign = angle_hf.sign;
         } else {
@@ -1014,7 +962,7 @@ uint16_t hf_tan(uint16_t hfangle) {
         normalize_and_round(&result);
     }
 
-    return compose_half(result);
+    return compose_half(&result);
 }
 
 /**
@@ -1087,12 +1035,12 @@ static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift) {
     result.exp = 0;
 
     //Gestion unifiée des cas spéciaux
-    if(is_nan(angle_hf)) {
+    if(is_nan(&angle_hf)) {
         //Propager le signe original pour les NaN
         result.sign = angle_hf.sign;
         result.exp = HF_EXP_FULL;
         result.mant = 1;
-    } else if(is_infinity(angle_hf)) {
+    } else if(is_infinity(&angle_hf)) {
         //Pour les infinis, retourner NaN négatif selon la convention
         result.sign = HF_ZERO_NEG;
         result.exp = HF_EXP_FULL;
@@ -1138,7 +1086,7 @@ static uint16_t sinus_shiftable(uint16_t hfangle, uint16_t shift) {
         normalize_and_round(&result);
     }
 
-    return compose_half(result);
+    return compose_half(&result);
 }
 
 
@@ -1157,13 +1105,13 @@ static uint16_t asinus_shiftable(uint16_t hf, uint32_t shift) {
     half_float input = decompose_half(hf);
    
     //Cas spéciaux: NaN
-    if(is_nan(input)) {
+    if(is_nan(&input)) {
         result.sign = input.sign;
         result.exp = HF_EXP_FULL;
         result.mant = 1;
     }
     //Cas spéciaux: Infinity (hors domaine)
-    else if(is_infinity(input)) {
+    else if(is_infinity(&input)) {
         result.sign = HF_ZERO_NEG;
         result.exp = HF_EXP_FULL;
         result.mant = 1;
@@ -1206,6 +1154,111 @@ static uint16_t asinus_shiftable(uint16_t hf, uint32_t shift) {
             normalize_and_round(&result);
         }
     }
-   
-    return compose_half(result);
+
+    return compose_half(&result);
+}
+
+/**
+ * @brief Calcule la racine carrée entière d'un entier non signé 32 bits
+ * 
+ * Cette fonction utilise un algorithme de décalage pour calculer
+ * la racine carrée entière d'un entier non signé 32 bits.
+ * 
+ * @param value L'entier non signé dont on veut calculer la racine carrée
+ * @return La racine carrée entière de value
+ */
+static uint32_t square_root(uint32_t value) {
+    uint32_t root = 0;
+    uint32_t rest = 0;
+    int loop = 16;
+
+    //Algorithme de racine carrée par décalage
+    while(--loop >= 0) {
+        uint32_t cond;
+        value = ROL32(value, 2);           //Fait remonter les 2 bits suivants
+        rest  = (rest << 2) + (value & 3); //Ajoute ces 2 bits au reste
+        root  = (root << 2) + 1;           //Combine doublage et calcul du diviseur d’essai
+        cond  = (rest >= root);            //0 ou 1 selon comparaison
+        rest -= root & -cond;              //Retire trial si cond==1
+        root  = (root >> 1) + cond;        //Met à jour la racine
+    }
+
+    return root;
+}
+
+/**
+ * @brief Compare deux demi-flottants décomposés
+ *
+ * Compare deux valeurs demi-précision sous forme décomposée (sign, exp, mant)
+ * et renvoie un code de comparaison générique utilisable par hf_cmp, hf_min et hf_max.
+ *
+ * Cette fonction ne manipule pas les valeurs encodées en binaire IEEE,
+ * mais les structures internes `half_float` (signe, exposant, mantisse).
+ *
+ * @param input1 Pointeur vers le premier demi-flottant décomposé (const)
+ * @param input2 Pointeur vers le second demi-flottant décomposé (const)
+ * @return Code de comparaison :
+ *         -2 si NaN détecté (comparaison impossible)
+ *         -1 si *input1* < *input2*
+ *          0 si *input1* == *input2*
+ *         +1 si *input1* > *input2*
+ */
+static int compare_half(const half_float *input1, const half_float *input2) {
+    int cmp = 0;
+
+    if(is_nan(input1) || is_nan(input2)) {
+        //Détection des NaN : toute comparaison devient indéfinie
+        cmp = -2;
+    }
+    else if(input1->sign != input2->sign) {
+        //Comparaison par signe (négatif < positif)
+        cmp = input1->sign ? -1 : 1;
+    }
+    else if(input1->exp != input2->exp) {
+        //Comparaison par exposant
+        cmp = ((input1->exp < input2->exp) ^ input1->sign) ? -1 : 1;
+    }
+    else if(input1->mant != input2->mant) {
+        //Comparaison par mantisse
+        cmp = ((input1->mant < input2->mant) ^ input1->sign) ? -1 : 1;
+    }
+
+    //Sinon cmp reste 0 (égalité parfaite)
+    return cmp;
+}
+
+/**
+ * @brief Vérifie si un demi-flottant représente un entier exact.
+ *
+ * Retourne :
+ *  - valeur entière absolue si le demi-flottant est un entier exact
+ *  - -1 si non-entier, NaN, +/-Inf ou subnormal
+ */
+static int check_int_half(const half_float *hf) {
+    int result = -1;
+
+    //Rejeter NaN, Inf et subnormaux (exp == -bias et mant != 0)
+    if (!is_nan(hf) && !is_infinity(hf)) {
+        if (hf->mant == 0 && hf->exp == -HF_EXP_BIAS) {
+            //Cas spécial +/-0
+            result = 0;
+        } else if (!(hf->exp == -HF_EXP_BIAS && hf->mant != 0)) {
+            //Calculer combien de bits fractionnaires existent
+            int shift = (HF_MANT_BITS + HF_PRECISION_SHIFT) - hf->exp;
+
+            if (shift <= 0) {
+                //Exposant trop grand : valeur énorme, forcément un entier pair
+                result = 0;
+            } else if (shift <= (HF_MANT_BITS + HF_PRECISION_SHIFT)) {
+                //Vérifier si les bits fractionnaires sont à 0
+                uint32_t mant = hf->mant;
+
+                if (((mant >> shift) << shift) == mant) {
+                    result = (int)(mant >> shift);
+                }
+            }
+        }
+    }
+
+    return result;
 }

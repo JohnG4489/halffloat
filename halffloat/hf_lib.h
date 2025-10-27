@@ -17,7 +17,7 @@
 #include "hf_common.h"
 
 //Fonctions de comparaison
-uint16_t hf_cmp(uint16_t hf1, uint16_t hf2);
+int hf_cmp(uint16_t hf1, uint16_t hf2);
 uint16_t hf_min(uint16_t hf1, uint16_t hf2);
 uint16_t hf_max(uint16_t hf1, uint16_t hf2);
 

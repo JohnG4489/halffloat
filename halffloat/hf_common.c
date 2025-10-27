@@ -21,13 +21,13 @@ uint16_t float_to_half(float f);
 float half_to_float(uint16_t hf);
 
 //Statut du demi-flottant
-bool_t is_infinity(half_float hf);
-bool_t is_nan(half_float hf);
-bool_t is_zero(half_float hf);
+bool_t is_infinity(const half_float *hf);
+bool_t is_nan(const half_float *hf);
+bool_t is_zero(const half_float *hf);
 
 //Décomposition et composition de demi-flottants
 half_float decompose_half(uint16_t hf);
-uint16_t compose_half(half_float hf);
+uint16_t compose_half(const half_float *hf);
 
 //Fonctions internes
 void align_mantissas(half_float *hf1, half_float *hf2);
@@ -126,8 +126,8 @@ float half_to_float(uint16_t hf) {
  * @param hf Le demi-flottant à vérifier
  * @return true si le demi-flottant est infini, false sinon
  */
-bool_t is_infinity(half_float hf) {
-    return (hf.exp == HF_EXP_FULL) && (hf.mant == 0);
+bool_t is_infinity(const half_float *hf) {
+    return (hf->exp == HF_EXP_FULL) && (hf->mant == 0);
 }
 
 /**
@@ -136,8 +136,8 @@ bool_t is_infinity(half_float hf) {
  * @param hf Le demi-flottant à vérifier
  * @return true si le demi-flottant est NaN, false sinon
  */
-bool_t is_nan(half_float hf) {
-    return (hf.exp == HF_EXP_FULL) && (hf.mant != 0);
+bool_t is_nan(const half_float *hf) {
+    return (hf->exp == HF_EXP_FULL) && (hf->mant != 0);
 }
 
 /**
@@ -146,8 +146,8 @@ bool_t is_nan(half_float hf) {
  * @param hf Le demi-flottant à vérifier
  * @return true si le demi-flottant est zéro, false sinon
  */
-bool_t is_zero(half_float hf) {
-    return (hf.exp != HF_EXP_FULL) && (hf.mant == 0);
+bool_t is_zero(const half_float *hf) {
+    return (hf->exp != HF_EXP_FULL) && (hf->mant == 0);
 }
 
 /**
@@ -186,23 +186,23 @@ half_float decompose_half(uint16_t hf) {
  * @param hf La structure half_float à composer
  * @return La valeur uint16_t correspondante
  */
-uint16_t compose_half(half_float hf) {
-    uint16_t result = hf.sign;  //Déjà 0x0000 ou 0x8000
-   
+uint16_t compose_half(const half_float *hf) {
+    uint16_t result = hf->sign;  //Déjà 0x0000 ou 0x8000
+
     //Gestion des cas spéciaux
-    if(hf.exp == HF_EXP_FULL) {
+    if(hf->exp == HF_EXP_FULL) {
         //Infini ou NaN
-        result |= (hf.mant != 0 ? HF_NAN : HF_INFINITY_POS);
+        result |= (hf->mant != 0 ? HF_NAN : HF_INFINITY_POS);
     }
-    else if(hf.exp == HF_EXP_MIN) {
+    else if(hf->exp == HF_EXP_MIN) {
         //Subnormal: décalage +1 pour les subnormaux
-        uint16_t mant_bits = (hf.mant >> (HF_PRECISION_SHIFT + 1)) & HF_MASK_MANT;
+        uint16_t mant_bits = (hf->mant >> (HF_PRECISION_SHIFT + 1)) & HF_MASK_MANT;
         result |= mant_bits;
     }
-    else if(hf.mant != 0) {
+    else if(hf->mant != 0) {
         //Nombre normalisé: retirer le bit implicite
-        uint16_t exp_bits = (hf.exp + HF_EXP_BIAS) & HF_MASK_EXP;
-        uint16_t mant_bits = (hf.mant >> HF_PRECISION_SHIFT) & HF_MASK_MANT;
+        uint16_t exp_bits = (hf->exp + HF_EXP_BIAS) & HF_MASK_EXP;
+        uint16_t mant_bits = (hf->mant >> HF_PRECISION_SHIFT) & HF_MASK_MANT;
         result |= (exp_bits << HF_MANT_BITS) | mant_bits;
     }
     //Cas Zéro par défaut: signe préservé
