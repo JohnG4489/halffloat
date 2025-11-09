@@ -14,40 +14,260 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "hf_tests.h"
-#include "hf_lib.h"
 #include <math.h>
+#include "hf_tests.h"
+#include "hf_lib_arith.h"
+#include "hf_lib_exp.h"
+#include "hf_lib_trig.h"
+#include "hf_lib_round.h"
+#include "hf_lib_misc.h"
 
-//Prototypes des fonctions
-void debug_abs(void);
-void debug_neg(void);
-void debug_add(void);
-void debug_mul(void);
-void debug_div(void);
-void debug_inv(void);
-void debug_sqrt(void);
-void debug_rsqrt(void);
-void debug_pow(void);
-void debug_exp(void);
-void debug_int(void);
-void debug_ln(void);
-void debug_sin(void);
-void debug_cos(void);
-void debug_tan(void);
-void debug_asin(void);
-void debug_acos(void);
-void debug_denormal_values(void);
-void debug_mathematical_identities(void);
-void debug_ieee754_edge_cases(void);
-void debug_precision_stress_test(void);
-void debug_comparative_accuracy(void);
-void debug_boundary_conditions(void);
-void debug_special_constants(void);
-void debug_inverse_functions(void);
-void debug_rsqrt_comparison(void);
-
-//Fonction utilitaire locale
+//Prototype de la fonction utilitaire locale (doit être avant toute utilisation)
 static void print_formatted_table(const char *title, const char **headers, int num_cols, float data[][8], int num_rows);
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_int avec divers cas de test
+ * 
+ * Cette fonction teste l'extraction de la partie entière de demi-flottants
+ * avec des nombres positifs, négatifs, fractionnaires, et les cas spéciaux,
+ * et compare avec la troncature standard vers zéro.
+ */
+void debug_int(void) {
+    float test_cases[] = {
+        //Cas existants
+        65504.0f, 1.0f, 1.5f, 2.0f, 2.7f, 3.2f, -1.0f, -1.7f, -2.3f,
+        0.0f, -0.0f, 0.7f, -0.7f, half_to_float(HF_INFINITY_POS),
+        half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN),
+        0.000061035f, -0.000061035f, 5.96e-8f, -5.96e-8f,
+        //Cas manquants identifiés dans les tests
+        0.9999f, -0.9999f, 15.999f, -15.999f, 65503.0f, -65503.0f,
+        1.5f, 2.5f, 3.5f, -1.5f, -2.5f, -3.5f,
+        0.0001f, -0.0001f, 100000.0f, -100000.0f
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests étendus
+    const char *headers[] = {"Value", "Result (my_int)", "Result (std::int)", "Difference"};
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+
+        uint16_t result_half = hf_int(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = truncf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+
+        //Stocker les résultats dans le tableau
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+    
+    //Afficher le tableau formaté
+    print_formatted_table("### HF_INT", headers, 4, results, num_tests);
+
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_ceil sur divers cas
+ */
+void debug_ceil(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 0.5f, -0.5f, 1.1f, -1.1f, 2.9f, -2.9f, 65504.0f, -65504.0f,
+        0.9999f, -0.9999f, 1.0f, -1.0f, 2.0f, -2.0f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_ceil)", "Result (ceilf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_ceil(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = ceilf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_CEIL", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_floor sur divers cas
+ */
+void debug_floor(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 0.5f, -0.5f, 1.1f, -1.1f, 2.9f, -2.9f, 65504.0f, -65504.0f,
+        0.9999f, -0.9999f, 1.0f, -1.0f, 2.0f, -2.0f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_floor)", "Result (floorf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_floor(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = floorf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_FLOOR", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_round sur divers cas
+ */
+void debug_round(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 0.5f, -0.5f, 1.1f, -1.1f, 2.9f, -2.9f, 65504.0f, -65504.0f,
+        0.9999f, -0.9999f, 1.0f, -1.0f, 2.0f, -2.0f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_round)", "Result (roundf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_round(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = roundf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_ROUND", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_trunc sur divers cas
+ */
+void debug_trunc(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 0.5f, -0.5f, 1.1f, -1.1f, 2.9f, -2.9f, 65504.0f, -65504.0f,
+        0.9999f, -0.9999f, 1.0f, -1.0f, 2.0f, -2.0f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_trunc)", "Result (truncf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_trunc(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = truncf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_TRUNC", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_min sur divers cas
+ */
+void debug_min(void) {
+    float test_cases[][2] = {
+        {1.0f, 2.0f}, {-1.0f, 1.0f}, {0.0f, -0.0f}, {65504.0f, -65504.0f},
+        {half_to_float(HF_INFINITY_POS), 1.0f}, {half_to_float(HF_INFINITY_NEG), 1.0f},
+        {half_to_float(HF_NAN), 1.0f}, {1.0f, half_to_float(HF_NAN)},
+        {half_to_float(HF_NAN), half_to_float(HF_INFINITY_POS)},
+        {half_to_float(HF_NAN), half_to_float(HF_NAN)}
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value1", "Value2", "Result (hf_min)", "Result (fminf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float v1 = test_cases[i][0];
+        float v2 = test_cases[i][1];
+        uint16_t h1 = float_to_half(v1);
+        uint16_t h2 = float_to_half(v2);
+        uint16_t result_half = hf_min(h1, h2);
+        float result_float = half_to_float(result_half);
+        float std_result = fminf(half_to_float(h1), half_to_float(h2));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = v1;
+        results[i][1] = v2;
+        results[i][2] = result_float;
+        results[i][3] = std_result;
+        results[i][4] = diff;
+    }
+
+    print_formatted_table("### HF_MIN", headers, 5, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_max sur divers cas
+ */
+void debug_max(void) {
+    float test_cases[][2] = {
+        {1.0f, 2.0f}, {-1.0f, 1.0f}, {0.0f, -0.0f}, {65504.0f, -65504.0f},
+        {half_to_float(HF_INFINITY_POS), 1.0f}, {half_to_float(HF_INFINITY_NEG), 1.0f},
+        {half_to_float(HF_NAN), 1.0f}, {1.0f, half_to_float(HF_NAN)},
+        {half_to_float(HF_NAN), half_to_float(HF_INFINITY_POS)},
+        {half_to_float(HF_NAN), half_to_float(HF_NAN)}
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value1", "Value2", "Result (hf_max)", "Result (fmaxf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float v1 = test_cases[i][0];
+        float v2 = test_cases[i][1];
+        uint16_t h1 = float_to_half(v1);
+        uint16_t h2 = float_to_half(v2);
+        uint16_t result_half = hf_max(h1, h2);
+        float result_float = half_to_float(result_half);
+        float std_result = fmaxf(half_to_float(h1), half_to_float(h2));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = v1;
+        results[i][1] = v2;
+        results[i][2] = result_float;
+        results[i][3] = std_result;
+        results[i][4] = diff;
+    }
+
+    print_formatted_table("### HF_MAX", headers, 5, results, num_tests);
+    printf("\n");
+}
 
 /**
  * @brief Fonction de débogage pour tester la fonction hf_abs avec divers cas de test
@@ -74,8 +294,8 @@ void debug_abs(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[30][8]; /* Tableau statique étendu pour tous les tests */
+    //Préparer les données pour le tableau formaté
+    float results[30][8]; //Tableau statique étendu pour tous les tests
     const char *headers[] = {"Value", "Result (hf_abs)", "Result (fabsf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -87,16 +307,15 @@ void debug_abs(void) {
         float std_result = fabsf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_ABS", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -124,8 +343,8 @@ void debug_neg(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[30][8]; /* Tableau statique étendu pour tous les tests */
+    //Préparer les données pour le tableau formaté
+    float results[30][8]; //Tableau statique étendu pour tous les tests
     const char *headers[] = {"Value", "Result (hf_neg)", "Result (-value)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -137,16 +356,15 @@ void debug_neg(void) {
         float std_result = -half_to_float(value_half);
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_NEG", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -182,8 +400,8 @@ void debug_add(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests */
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests
     const char *headers[] = {"Value1", "Value2", "Result (my_add)", "Result (std::add)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -197,7 +415,7 @@ void debug_add(void) {
         float std_result = half_to_float(value1_half) + half_to_float(value2_half);
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value1;
         results[i][1] = value2;
         results[i][2] = result_float;
@@ -205,9 +423,8 @@ void debug_add(void) {
         results[i][4] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_ADD", headers, 5, results, num_tests);
-
     printf("\n");
 }
 
@@ -245,8 +462,8 @@ void debug_mul(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests */
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests
     const char *headers[] = {"Value1", "Value2", "Result (my_mul)", "Result (std::mul)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -260,7 +477,7 @@ void debug_mul(void) {
         float std_result = half_to_float(value1_half) * half_to_float(value2_half);
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value1;
         results[i][1] = value2;
         results[i][2] = result_float;
@@ -268,9 +485,8 @@ void debug_mul(void) {
         results[i][4] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_MUL", headers, 5, results, num_tests);
-
     printf("\n");
 }
 
@@ -299,6 +515,8 @@ void debug_div(void) {
         {half_to_float(HF_INFINITY_POS), -2.0f}, {half_to_float(HF_INFINITY_NEG), -2.0f},
         {2.0f, half_to_float(HF_INFINITY_POS)}, {2.0f, half_to_float(HF_INFINITY_NEG)},
         {-2.0f, half_to_float(HF_INFINITY_POS)}, {-2.0f, half_to_float(HF_INFINITY_NEG)},
+        //Division of zero by infinity should yield +-0 (or 0) per IEEE rules
+        {0.0f, half_to_float(HF_INFINITY_POS)}, {0.0f, half_to_float(HF_INFINITY_NEG)},
         {half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_POS)},
         {half_to_float(HF_INFINITY_NEG), half_to_float(HF_INFINITY_NEG)},
         {half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG)},
@@ -312,8 +530,8 @@ void debug_div(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests */
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests
     const char *headers[] = {"Value1", "Value2", "Result (my_div)", "Result (std::div)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -324,11 +542,11 @@ void debug_div(void) {
 
         uint16_t result_half = hf_div(value1_half, value2_half);
         float result_float = half_to_float(result_half);
-        /* Utiliser la division standard C qui gère correctement les signes des zéros IEEE 754 */
+        //Utiliser la division standard C qui gère correctement les signes des zéros IEEE 754
         float std_result = half_to_float(value1_half) / half_to_float(value2_half);
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value1;
         results[i][1] = value2;
         results[i][2] = result_float;
@@ -336,9 +554,8 @@ void debug_div(void) {
         results[i][4] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_DIV", headers, 5, results, num_tests);
-
     printf("\n");
 }
 
@@ -422,8 +639,8 @@ void debug_sqrt(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests étendus
     const char *headers[] = {"Value", "Result (my_sqrt)", "Result (std::sqrt)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -435,16 +652,15 @@ void debug_sqrt(void) {
         float std_result = sqrtf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_SQRT", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -465,8 +681,8 @@ void debug_rsqrt(void) {
         half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), 
         half_to_float(HF_NAN),
         
-        //Valeurs dénormalisées et petites
-        0.000061035f, 5.96e-8f, 1e-10f,
+	    //Valeurs dénormalisées et petites
+	    0.000061035f, 5.96e-8f, 1e-10f, 1e-12f, 1e-15f,
         
         //Valeurs limites du half-float
         65504.0f,      //Max half-float normal
@@ -491,6 +707,8 @@ void debug_rsqrt(void) {
         
         //AJOUTS: Nombres négatifs variés
         -0.5f, -2.0f, -100.0f,
+        //Ajout explicite: rsqrt(-inf) doit donner NaN
+        half_to_float(HF_INFINITY_NEG),
         
         //Grandes valeurs
         100.0f, 10000.0f,
@@ -593,14 +811,14 @@ void debug_pow(void) {
         {-1.0f, 0.5f},       //(-1)^0.5 = NaN (indéfini en réel)
         {-1.0f, -0.5f},      //(-1)^(-0.5) = NaN (idem)
         {-1.0f, 2.5f},       //(-1)^2.5 = NaN
-        {-1.0f, half_to_float(HF_INFINITY_POS)},  //(-1)^+Inf = NaN
-        {-1.0f, half_to_float(HF_INFINITY_NEG)}  //(-1)^-Inf = NaN
+        {-1.0f, half_to_float(HF_INFINITY_POS)},  //(-1)^+Inf = 1 (|base| == 1 -> result 1 per IEEE)
+        {-1.0f, half_to_float(HF_INFINITY_NEG)}   //(-1)^-Inf = 1 (|base| == 1 -> result 1 per IEEE)
     };
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[70][8]; /* Tableau statique étendu pour tous les tests */
+    //Préparer les données pour le tableau formaté
+    float results[70][8]; //Tableau statique étendu pour tous les tests
     const char *headers[] = {"Base", "Exp", "Result (my_pow)", "Result (std::pow)", "Difference"};
     
     for(i = 0; i < num_tests; i++) {
@@ -614,7 +832,7 @@ void debug_pow(void) {
         float std_result = powf(half_to_float(base_half), half_to_float(exponent_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = base;
         results[i][1] = exponent;
         results[i][2] = result_float;
@@ -622,9 +840,8 @@ void debug_pow(void) {
         results[i][4] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_POW", headers, 5, results, num_tests);
-
     printf("\n");
 }
 
@@ -659,8 +876,8 @@ void debug_exp(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
+    //Préparer les données pour le tableau formaté
+    float results[50][8]; //Tableau statique suffisant pour tous les tests étendus
     const char *headers[] = {"Value", "Result (my_exp)", "Result (std::exp)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -672,17 +889,17 @@ void debug_exp(void) {
         float std_result = expf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_EXP", headers, 4, results, num_tests);
 
-    /* Test d'identité mathématique: exp(ln(x)) = x */
+    //Test d'identité mathématique: exp(ln(x)) = x
     printf("### Mathematical Identity: exp(ln(x)) = x\n");
     printf("=========================================\n");
     {
@@ -698,59 +915,9 @@ void debug_exp(void) {
             float identity_result = half_to_float(exp_result);
             float error = fabsf((identity_result - x) / x) * 100.0f;
             
-            printf("exp(ln(%.1f)) = %.6f (error: %.3f%%) %s\n",
-                   x, identity_result, error, (error < 1.0f) ? "OK" : "ERR");
+            printf("exp(ln(%.1f)) = %.6f (error: %.3f%%) %s\n", x, identity_result, error, (error < 1.0f) ? "OK" : "ERR");
         }
     }
-
-    printf("\n");
-}
-
-
-/**
- * @brief Fonction de débogage pour tester la fonction hf_int avec divers cas de test
- * 
- * Cette fonction teste l'extraction de la partie entière de demi-flottants
- * avec des nombres positifs, négatifs, fractionnaires, et les cas spéciaux,
- * et compare avec la troncature standard vers zéro.
- */
-void debug_int(void) {
-    float test_cases[] = {
-        //Cas existants
-        65504.0f, 1.0f, 1.5f, 2.0f, 2.7f, 3.2f, -1.0f, -1.7f, -2.3f,
-        0.0f, -0.0f, 0.7f, -0.7f, half_to_float(HF_INFINITY_POS),
-        half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN),
-        0.000061035f, -0.000061035f, 5.96e-8f, -5.96e-8f,
-        //Cas manquants identifiés dans les tests
-        0.9999f, -0.9999f, 15.999f, -15.999f, 65503.0f, -65503.0f,
-        1.5f, 2.5f, 3.5f, -1.5f, -2.5f, -3.5f,
-        0.0001f, -0.0001f, 100000.0f, -100000.0f
-    };
-    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
-    int i;
-
-    /* Préparer les données pour le tableau formaté */
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
-    const char *headers[] = {"Value", "Result (my_int)", "Result (std::int)", "Difference"};
-
-    for(i = 0; i < num_tests; i++) {
-        float value = test_cases[i];
-        uint16_t value_half = float_to_half(value);
-
-        uint16_t result_half = hf_int(value_half);
-        float result_float = half_to_float(result_half);
-        float std_result = truncf(half_to_float(value_half));
-        float diff = fabsf(result_float - std_result);
-
-        /* Stocker les résultats dans le tableau */
-        results[i][0] = value;
-        results[i][1] = result_float;
-        results[i][2] = std_result;
-        results[i][3] = diff;
-    }
-    
-    /* Afficher le tableau formaté */
-    print_formatted_table("### HF_INT", headers, 4, results, num_tests);
 
     printf("\n");
 }
@@ -785,7 +952,7 @@ void debug_ln(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
+    //Préparer les données pour le tableau formaté
     float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
     const char *headers[] = {"Value", "Result (my_ln)", "Result (std::ln)", "Difference"};
 
@@ -798,16 +965,15 @@ void debug_ln(void) {
         float std_result = logf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_LN", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -834,7 +1000,7 @@ void debug_sin(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
+    //Préparer les données pour le tableau formaté
     float results[25][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Angle (rad)", "Result (hf_sin)", "Result (sinf)", "Difference"};
 
@@ -847,16 +1013,15 @@ void debug_sin(void) {
         float std_result = sinf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_SIN", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -883,7 +1048,7 @@ void debug_cos(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
+    //Préparer les données pour le tableau formaté
     float results[25][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Angle (rad)", "Result (hf_cos)", "Result (cosf)", "Difference"};
 
@@ -896,16 +1061,15 @@ void debug_cos(void) {
         float std_result = cosf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_COS", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -936,7 +1100,7 @@ void debug_tan(void) {
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
 
-    /* Préparer les données pour le tableau formaté */
+    //Préparer les données pour le tableau formaté
     float results[70][8]; /* Tableau statique suffisant pour tous les tests */
     const char *headers[] = {"Angle (rad)", "Result (hf_tan)", "Result (tanf)", "Difference"};
 
@@ -949,16 +1113,15 @@ void debug_tan(void) {
         float std_result = tanf(half_to_float(value_half));
         float diff = fabsf(result_float - std_result);
 
-        /* Stocker les résultats dans le tableau */
+        //Stocker les résultats dans le tableau
         results[i][0] = value;
         results[i][1] = result_float;
         results[i][2] = std_result;
         results[i][3] = diff;
     }
     
-    /* Afficher le tableau formaté */
+    //Afficher le tableau formaté
     print_formatted_table("### HF_TAN", headers, 4, results, num_tests);
-
     printf("\n");
 }
 
@@ -1096,6 +1259,361 @@ void debug_acos(void) {
    
     //Afficher le tableau formaté
     print_formatted_table("### HF_ACOS", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_atan avec divers cas
+ *
+ * Cette fonction teste l'arc tangente de demi-flottants avec des valeurs variées
+ * incluant des petites valeurs, des grandes valeurs (|x|>1), des valeurs négatives,
+ * des zéros signés, l'infini et NaN. Elle compare les résultats avec atanf().
+ */
+void debug_atan(void) {
+    float test_cases[] = {
+        //Valeurs de base autour de 0
+        0.0f, -0.0f, 0.001f, -0.001f, 0.01f, -0.01f, 0.1f, -0.1f,
+        //Valeurs remarquables
+        0.5f, -0.5f, 1.0f, -1.0f,
+        //Valeurs > 1 déclenchant le complément
+        2.0f, -2.0f, 3.0f, -3.0f, 10.0f, -10.0f,
+        //Valeurs très grandes
+        1000.0f, -1000.0f,
+        //Valeurs dénormalisées / très petites
+        5.96e-8f, -5.96e-8f, 1e-6f, -1e-6f,
+        //Infinis et NaN
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG),
+        //Ajout explicite pour vérifier atan(+/-inf) -> +/-pi/2
+        half_to_float(HF_INFINITY_POS), -half_to_float(HF_INFINITY_POS),
+        half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+
+    float results[40][8];
+    const char *headers[] = {"Value", "Result (hf_atan)", "Result (atanf)", "Diff (rad)", "Diff (deg)"};
+
+    for(i = 0; i < num_tests; i++) {
+        float val = test_cases[i];
+        uint16_t val_hf = float_to_half(val);
+        uint16_t res_hf = hf_atan(val_hf);
+        float res_float = half_to_float(res_hf);
+        float std_float = atanf(half_to_float(val_hf));
+        float diff_rad = fabsf(res_float - std_float);
+        float diff_deg = diff_rad * 180.0f / 3.14159265f;
+
+        results[i][0] = val;
+        results[i][1] = res_float;
+        results[i][2] = std_float;
+        results[i][3] = diff_rad;
+        results[i][4] = diff_deg;
+    }
+
+    print_formatted_table("### HF_ATAN", headers, 5, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste la fonction hf_atan2 avec divers cas
+ */
+void debug_atan2(void) {
+    typedef struct {
+        float y;
+        float x;
+    } test_case_t;
+    
+    test_case_t test_cases[] = {
+        //Quadrant 1 (x > 0, y > 0)
+        {1.0f, 1.0f},          //45°
+        {1.0f, 2.0f},          //~26.6°
+        {2.0f, 1.0f},          //~63.4°
+        
+        //Quadrant 2 (x < 0, y > 0)
+        {1.0f, -1.0f},         //135°
+        {1.0f, -2.0f},         //~153.4°
+        {2.0f, -1.0f},         //~116.6°
+        
+        //Quadrant 3 (x < 0, y < 0)
+        {-1.0f, -1.0f},        //-135°
+        {-1.0f, -2.0f},        //~-153.4°
+        {-2.0f, -1.0f},        //~-116.6°
+        
+        //Quadrant 4 (x > 0, y < 0)
+        {-1.0f, 1.0f},         //-45°
+        {-1.0f, 2.0f},         //~-26.6°
+        {-2.0f, 1.0f},         //~-63.4°
+        
+        //Cas spéciaux sur les axes
+        {0.0f, 1.0f},          //0°
+        {1.0f, 0.0f},          //90°
+        {0.0f, -1.0f},         //180°
+        {-1.0f, 0.0f},         //-90°
+        
+        //Cas spéciaux avec zéros signés
+        {0.0f, 0.0f},          //NaN (indéfini)
+        {1.0f, 0.0f},          //+pi/2
+        {-1.0f, 0.0f},         //-pi/2
+        
+        //Cas avec infinités
+        {half_to_float(HF_INFINITY_POS), 1.0f},
+        {half_to_float(HF_INFINITY_NEG), 1.0f},
+        {1.0f, half_to_float(HF_INFINITY_POS)},
+        {1.0f, half_to_float(HF_INFINITY_NEG)},
+        
+        //Valeurs très petites et très grandes
+        {0.001f, 1000.0f},
+        {1000.0f, 0.001f},
+    };
+    
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+    
+    float results[30][8];
+    const char *headers[] = {"Y", "X", "Result (hf)", "Result (std)", "Diff (rad)", "Diff (deg)"};
+    
+    for(i = 0; i < num_tests; i++) {
+        float y = test_cases[i].y;
+        float x = test_cases[i].x;
+        
+        uint16_t y_half = float_to_half(y);
+        uint16_t x_half = float_to_half(x);
+        
+        uint16_t result_half = hf_atan2(y_half, x_half);
+        float result_float = half_to_float(result_half);
+        float std_result = atan2f(half_to_float(y_half), half_to_float(x_half));
+        float diff_rad = fabsf(result_float - std_result);
+        float diff_deg = diff_rad * 180.0f / 3.14159265f;
+        
+        results[i][0] = y;
+        results[i][1] = x;
+        results[i][2] = result_float;
+        results[i][3] = std_result;
+        results[i][4] = diff_rad;
+        results[i][5] = diff_deg;
+    }
+
+    print_formatted_table("### HF_ATAN2", headers, 6, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_sinh avec divers cas
+ *
+ * Teste la fonction hyperbolique sinh(x) sur une gamme de valeurs: petites,
+ * grandes, négatives, zéros signés, infinis et NaN. Compare avec sinhf().
+ */
+void debug_sinh(void) {
+    float test_cases[] = {
+        //Autour de zéro
+        0.0f, -0.0f, 0.001f, -0.001f, 0.01f, -0.01f, 0.1f, -0.1f,
+        //Valeurs modérées
+        0.5f, -0.5f, 1.0f, -1.0f, 2.0f, -2.0f,
+        //Valeurs grandes (overflow half possible)
+        5.0f, -5.0f, 8.0f, -8.0f, 10.0f, -10.0f,
+        //Très grandes (doivent saturer)
+        15.0f, -15.0f,
+        //Valeurs très petites / dénormalisées
+        5.96e-8f, -5.96e-8f, 1e-6f, -1e-6f,
+        //Infinis et NaN
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+    float results[40][8];
+    const char *headers[] = {"Value", "Result (hf_sinh)", "Result (sinhf)", "Diff", "RelErr"};
+
+    for(i = 0; i < num_tests; i++) {
+        float v = test_cases[i];
+        uint16_t v_hf = float_to_half(v);
+        uint16_t r_hf = hf_sinh(v_hf);
+        float r = half_to_float(r_hf);
+        float ref = sinhf(half_to_float(v_hf));
+        float diff = fabsf(r - ref);
+        float rel = (ref != 0.0f && !isnan(ref) && !isinf(ref)) ? diff / fabsf(ref) : 0.0f;
+        results[i][0] = v;
+        results[i][1] = r;
+        results[i][2] = ref;
+        results[i][3] = diff;
+        results[i][4] = rel;
+    }
+    print_formatted_table("### HF_SINH", headers, 5, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Teste hf_cosh sur divers cas
+ */
+void debug_cosh(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 0.5f, -0.5f, 1.0f, -1.0f, 2.0f, -2.0f, 10.0f, -10.0f,
+        65504.0f, -65504.0f, 0.000061035f, -0.000061035f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_cosh)", "Result (coshf)", "Difference"};
+
+    int i; for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+        uint16_t result_half = hf_cosh(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = coshf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_COSH", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_tanh avec divers cas de test
+ *
+ * Cette fonction teste la tangente hyperbolique de demi-flottants avec une variété de cas
+ * incluant les valeurs positives, négatives, zéro, infini, NaN, et compare les résultats
+ * avec tanhf() standard.
+ */
+void debug_tanh(void) {
+    float test_cases[] = {
+        //Cas normaux
+        0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f, 10.0f, -10.0f,
+        65504.0f, -65504.0f, 0.000061035f, -0.000061035f,
+        //Cas spéciaux IEEE 754
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG),
+        half_to_float(HF_NAN),
+        //NaN négatif (créé via sqrt de nombre négatif)
+        half_to_float(hf_sqrt(float_to_half(-1.0f))),
+        //Autre NaN négatif via ln
+        half_to_float(hf_ln(float_to_half(-2.0f)))
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int i;
+
+    float results[30][8];
+    const char *headers[] = {"Value", "Result (hf_tanh)", "Result (tanhf)", "Difference"};
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t value_half = float_to_half(value);
+
+        uint16_t result_half = hf_tanh(value_half);
+        float result_float = half_to_float(result_half);
+        float std_result = tanhf(half_to_float(value_half));
+        float diff = fabsf(result_float - std_result);
+
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_TANH", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_asinh avec divers cas de test
+ *
+ * Cette fonction teste l'arc sinus hyperbolique de demi-flottants avec une variété de cas
+ * incluant les valeurs normales, limites, NaN, infini, et compare les résultats avec asinhf() standard.
+ */
+void debug_asinh(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f, 10.0f, -10.0f,
+        65504.0f, -65504.0f, 0.000061035f, -0.000061035f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_asinh)", "Result (asinhf)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t h = float_to_half(value);
+        uint16_t r = hf_asinh(h);
+        float result_float = half_to_float(r);
+        float std_result = asinhf(half_to_float(h));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_ASINH", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_acosh avec divers cas de test
+ *
+ * Cette fonction teste l'arc cosinus hyperbolique de demi-flottants avec une variété de cas
+ * incluant les valeurs normales, limites, NaN, infini, et compare les résultats avec acoshf() standard.
+ */
+void debug_acosh(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f, 10.0f, -10.0f,
+        65504.0f, -65504.0f, 0.000061035f, -0.000061035f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_acosh)", "Result (acoshf)", "Difference"};
+    int i;
+    
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t h = float_to_half(value);
+        uint16_t r = hf_acosh(h);
+        float result_float = half_to_float(r);
+        float std_result = acoshf(half_to_float(h));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_ACOSH", headers, 4, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_atanh avec divers cas de test
+ *
+ * Cette fonction teste l'arc tangente hyperbolique de demi-flottants avec une variété de cas
+ * incluant les valeurs normales, limites, NaN, infini, et compare les résultats avec atanhf() standard.
+ */
+void debug_atanh(void) {
+    float test_cases[] = {
+        0.0f, -0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f, 10.0f, -10.0f,
+        65504.0f, -65504.0f, 0.000061035f, -0.000061035f,
+        half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG), half_to_float(HF_NAN)
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[20][8];
+    const char *headers[] = {"Value", "Result (hf_atanh)", "Result (atanhf)", "Difference"};
+    int i;
+    
+    for(i = 0; i < num_tests; i++) {
+        float value = test_cases[i];
+        uint16_t h = float_to_half(value);
+        uint16_t r = hf_atanh(h);
+        float result_float = half_to_float(r);
+        float std_result = atanhf(half_to_float(h));
+        float diff = fabsf(result_float - std_result);
+        results[i][0] = value;
+        results[i][1] = result_float;
+        results[i][2] = std_result;
+        results[i][3] = diff;
+    }
+
+    print_formatted_table("### HF_ATANH", headers, 4, results, num_tests);
     printf("\n");
 }
 
@@ -1853,6 +2371,47 @@ void debug_rsqrt_comparison(void) {
 }
 
 /**
+ * @brief Test hf_tan proche de pi/2 pour mesurer l'erreur près des singularités
+ *
+ * Teste hf_tan(x) vs tanf(x) pour des valeurs x = pi/2 +/- eps, avec eps petits
+ * afin d'exposer les erreurs numériques près des asymptotes.
+ */
+void debug_tan_near_pi2(void) {
+    const float PI_2 = 1.5707963267948966f;
+    float eps_values[] = {1e-8f, 1e-7f, 1e-6f, 1e-5f, 1e-4f};
+    int num_eps = sizeof(eps_values) / sizeof(eps_values[0]);
+    float results[20][8];
+    const char *headers[] = {"x", "hf_tan", "tanf", "AbsErr", "RelErr", "note"};
+    int idx = 0;
+    int s;
+    int j;
+
+    for(s = -1; s <= 1; s += 2) {
+        for(j = 0; j < num_eps; j++) {
+            float eps = eps_values[j];
+            float x = PI_2 + s * eps;
+            uint16_t x_hf = float_to_half(x);
+            uint16_t tan_hf = hf_tan(x_hf);
+            float tan_hf_f = half_to_float(tan_hf);
+            float tan_std = tanf(x);
+            float abs_err = isnan(tan_std) ? NAN : fabsf(tan_hf_f - tan_std);
+            float rel_err = (isnan(tan_std) || tan_std == 0.0f) ? NAN : fabsf(abs_err / tan_std);
+
+            results[idx][0] = x;
+            results[idx][1] = tan_hf_f;
+            results[idx][2] = tan_std;
+            results[idx][3] = abs_err;
+            results[idx][4] = rel_err;
+            results[idx][5] = 0.0f; // note unused
+            idx++;
+        }
+    }
+
+    print_formatted_table("### HF_TAN near pi/2", headers, 6, results, idx);
+    printf("\n");
+}
+
+/**
  * @brief Imprime un tableau formaté avec alignement automatique des colonnes
  * 
  * @param title Titre du tableau (ex: "### HF_ADD")
@@ -1866,15 +2425,15 @@ static void print_formatted_table(const char *title, const char **headers, int n
     int i, j, width;
     char buffer[32];
     
-    /* Afficher le titre */
+    //Afficher le titre
     printf("%s\n", title);
     
-    /* Initialiser les largeurs avec les en-têtes */
+    //Initialiser les largeurs avec les en-têtes
     for(j = 0; j < num_cols && j < 5; j++) {
         col_widths[j] = (int)strlen(headers[j]);
     }
     
-    /* Calculer la largeur maximale nécessaire pour chaque colonne */
+    //Calculer la largeur maximale nécessaire pour chaque colonne
     for(i = 0; i < num_rows; i++) {
         for(j = 0; j < num_cols && j < 8; j++) {
             sprintf(buffer, "%.9f", data[i][j]);
@@ -1885,13 +2444,13 @@ static void print_formatted_table(const char *title, const char **headers, int n
         }
     }
     
-    /* Imprimer les en-têtes */
+    //Imprimer les en-têtes
     for(j = 0; j < num_cols; j++) {
         printf("%-*s", col_widths[j] + 2, headers[j]);
     }
     printf("\n");
     
-    /* Imprimer la ligne de séparation */
+    //Imprimer la ligne de séparation
     for(j = 0; j < num_cols; j++) {
         for(i = 0; i < col_widths[j] + 2; i++) {
             printf("-");
@@ -1899,7 +2458,7 @@ static void print_formatted_table(const char *title, const char **headers, int n
     }
     printf("\n");
     
-    /* Imprimer les données */
+    //Imprimer les données
     for(i = 0; i < num_rows; i++) {
         for(j = 0; j < num_cols; j++) {
             printf("%-*.*f", col_widths[j] + 2, 9, data[i][j]);

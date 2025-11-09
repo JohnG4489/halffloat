@@ -14,25 +14,11 @@
 #include "hf_common.h"
 #include <stddef.h>
 
-//Prototypes des fonctions
+//Variable globale pour le mode d'arrondi
+static hf_rounding_mode current_rounding_mode = HF_ROUND_NEAREST_EVEN;
 
-//Conversion entre float et demi-flottant
-uint16_t float_to_half(float f);
-float half_to_float(uint16_t hf);
-
-//Statut du demi-flottant
-bool_t is_infinity(const half_float *hf);
-bool_t is_nan(const half_float *hf);
-bool_t is_zero(const half_float *hf);
-
-//Décomposition et composition de demi-flottants
-half_float decompose_half(uint16_t hf);
-uint16_t compose_half(const half_float *hf);
-
-//Fonctions internes
-void align_mantissas(half_float *hf1, half_float *hf2);
-void normalize_and_round(half_float *result);
-void normalize_denormalized_mantissa(half_float *hf);
+//Fonction interne pour décider de l'arrondi
+static int should_round_up(uint32_t round_bits, uint32_t lsb, uint16_t sign);
 
 /**
  * @brief Convertit un float en demi-flottant (16 bits)
@@ -271,7 +257,7 @@ void normalize_and_round(half_float *result) {
         while((int32_t)temp > 0) {temp <<= 1; shift++;}
        
         //Calculer décalage pour placer MSB au bit 15
-        shift -= HF_MANT_BITS + HF_PRECISION_SHIFT + 1; //16 = 10 (mantisse) + 5 (précision)
+        shift -= HF_MANT_SHIFT + 1; //16 = 10 (mantisse) + 5 (précision)
 
         //Limiter le décalage pour ne pas passer sous HF_EXP_MIN
         margin = result->exp - HF_EXP_MIN;
@@ -283,10 +269,12 @@ void normalize_and_round(half_float *result) {
         result->exp -= shift;
     }
 
-    //ARRONDI ROUND-TO-NEAREST-EVEN
+    //ARRONDI selon le mode configuré
     if(result->mant & HF_GUARD_BIT) {
         uint32_t round_bits = result->mant & HF_ROUND_BIT_MASK;
-        if(round_bits > HF_GUARD_BIT || (round_bits == HF_GUARD_BIT && (result->mant & (1U << HF_PRECISION_SHIFT)))) {
+        uint32_t lsb = result->mant & (1U << HF_PRECISION_SHIFT);
+        
+        if(should_round_up(round_bits, lsb, result->sign)) {
             result->mant += (1U << HF_PRECISION_SHIFT);
             if(result->mant >= HF_MANT_NORM_MAX) {
                 result->mant >>= 1;
@@ -304,7 +292,7 @@ void normalize_and_round(half_float *result) {
     else if(result->exp < HF_EXP_MIN) {
         //Underflow: créer subnormal ou zéro
         int shift = HF_EXP_MIN - result->exp;
-        result->mant = (shift < HF_MANT_BITS + HF_PRECISION_SHIFT + 1) ? (result->mant + (1U << (shift - 1))) >> shift : 0;
+        result->mant = (shift < HF_MANT_SHIFT + 1) ? (result->mant + (1U << (shift - 1))) >> shift : 0;
         result->exp = HF_EXP_MIN;
     }
     //Sinon exp == HF_EXP_MIN: subnormal déjà bien positionné, rien à faire
@@ -330,4 +318,62 @@ void normalize_denormalized_mantissa(half_float *hf) {
             hf->exp--;
         }
     }
+}
+
+/**
+ * @brief Définit le mode d'arrondi global
+ * 
+ * @param mode Le nouveau mode d'arrondi à utiliser
+ */
+void hf_set_rounding_mode(hf_rounding_mode mode) {
+    current_rounding_mode = mode;
+}
+
+/**
+ * @brief Récupère le mode d'arrondi actuel
+ * 
+ * @return Le mode d'arrondi actuellement configuré
+ */
+hf_rounding_mode hf_get_rounding_mode(void) {
+    return current_rounding_mode;
+}
+
+/**
+ * @brief Détermine si un arrondi vers le haut est nécessaire
+ * 
+ * @param round_bits Bits de garde/arrondi (HF_ROUND_BIT_MASK)
+ * @param lsb Least Significant Bit de la mantisse finale
+ * @param sign Signe du nombre (0 = positif, HF_MASK_SIGN = négatif)
+ * @return 1 si arrondi vers le haut, 0 sinon
+ */
+static int should_round_up(uint32_t round_bits, uint32_t lsb, uint16_t sign) {
+    int result;
+    
+    switch(current_rounding_mode) {
+        case HF_ROUND_NEAREST_EVEN:
+            result = (round_bits > HF_GUARD_BIT) || (round_bits == HF_GUARD_BIT && lsb);
+            break;
+            
+        case HF_ROUND_NEAREST_UP:
+            result = (round_bits >= HF_GUARD_BIT);
+            break;
+            
+        case HF_ROUND_TOWARD_ZERO:
+            result = 0;
+            break;
+            
+        case HF_ROUND_TOWARD_POS_INF:
+            result = (!sign && round_bits);
+            break;
+            
+        case HF_ROUND_TOWARD_NEG_INF:
+            result = (sign && round_bits);
+            break;
+            
+        default:
+            result = 0;
+            break;
+    }
+    
+    return result;
 }

@@ -16,15 +16,9 @@
 #include "hf_precalc.h"
 #include <math.h>
 
-//Déclarations des fonctions publiques
-void fill_sin_table(void);
-void fill_asin_table(void);
-void fill_ln_table(void);
-void fill_exp_table(void);
-void fill_tan_tables_dual(void);       //Tables duales optimales Q13/Q6
-
 uint16_t sin_table[SIN_TABLE_SIZE+1];
 uint16_t asin_table[ASIN_TABLE_SIZE + 1];
+uint16_t atan_table[ATAN_TABLE_SIZE + 1];
 uint16_t ln_table[LN_TABLE_SIZE];
 uint16_t exp_table[EXP_TABLE_SIZE+1];
 
@@ -69,6 +63,26 @@ void fill_asin_table(void) {
         double x = (double)i / ASIN_TABLE_SIZE;
         double asin_val = asin(x);
         asin_table[i] = (uint16_t)(uint32_t)(asin_val * 32768.0 + 0.5); //Conversion en format fixe Q15
+    }
+}
+
+/**
+ * @brief Remplit la table d'arc tangente
+ *
+ * Cette fonction génère une table de valeurs d'arc tangente précalculées.
+ * Les valeurs sont converties en format virgule fixe Q15 pour une
+ * utilisation efficace dans les calculs de demi-précision.
+ *
+ * La table couvre l'intervalle [0, 1] avec ATAN_TABLE_SIZE+1 points,
+ * permettant une interpolation linéaire précise.
+ * Les résultats sont dans l'intervalle [0, pi/4].
+ */
+void fill_atan_table(void) {
+    int i;
+    for(i = 0; i <= ATAN_TABLE_SIZE; i++) {
+        double x = (double)i / ATAN_TABLE_SIZE;
+        double atan_val = atan(x);
+        atan_table[i] = (uint16_t)(uint32_t)(atan_val * 32768.0 + 0.5); //Conversion en format fixe Q15
     }
 }
 

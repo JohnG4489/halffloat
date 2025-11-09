@@ -2,8 +2,8 @@
 # Note: Compilation stricte avec optimisation maximale par défaut (MinGW-W64 en 64 bits)
 
 CC = gcc
-CFLAGS = -fno-aggressive-loop-optimizations -std=c99 -Wall -Wextra -Werror -Wpedantic -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -Wdeclaration-after-statement -O3 -march=native -mtune=native -flto -ffast-math -funroll-loops -m64
-SRC = main.c hf_common.c hf_lib.c hf_precalc.c hf_tests.c
+CFLAGS = -fno-aggressive-loop-optimizations -std=c99 -Wall -Wextra -Werror -Wpedantic -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -Wdeclaration-after-statement -Werror=unused-variable -O3 -march=native -mtune=native -flto -ffast-math -funroll-loops -m64
+SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 TARGET = main.exe
 

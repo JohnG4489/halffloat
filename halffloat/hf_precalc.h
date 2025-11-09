@@ -21,6 +21,21 @@
 #define SIN_TABLE_SIZE 1024
 #define ASIN_TABLE_SIZE 1024
 #define ASIN_TABLE_BITS 10
+#define ATAN_TABLE_SIZE 1024
+#define ATAN_TABLE_BITS 10
+
+/*
+ * Paramètres dérivés pour l'interpolation atan
+ * ATAN_Q_BITS  : nombre de bits fractionnaires du ratio en Q-format (dépend du design: ici Q15)
+ * ATAN_INTERP_SHIFT : décalage utilisé lors de l'interpolation linéaire entre deux entrées
+ *
+ * On évite les constantes magiques (15 - ATAN_TABLE_BITS) et (14 - ATAN_TABLE_BITS)
+ * en les remplaçant par ces macros afin de rendre le code robuste face à un
+ * changement futur du format interne (HF_PRECISION_SHIFT, HF_MANT_BITS, etc.).
+ */
+#define ATAN_Q_BITS        15
+#define ATAN_INDEX_SHIFT   (ATAN_Q_BITS - ATAN_TABLE_BITS)
+#define ATAN_INTERP_SHIFT  (ATAN_INDEX_SHIFT - 1)
 #define LN_TABLE_SIZE 1024
 #define EXP_TABLE_SIZE_SHIFT 8
 #define EXP_TABLE_SIZE (1<<EXP_TABLE_SIZE_SHIFT)
@@ -36,12 +51,14 @@
 
 void fill_sin_table(void);
 void fill_asin_table(void);
+void fill_atan_table(void);
 void fill_ln_table(void);
 void fill_exp_table(void);
 void fill_tan_tables_dual(void);       //Tables duales optimales Q13/Q6
 
 extern uint16_t sin_table[SIN_TABLE_SIZE+1];
 extern uint16_t asin_table[ASIN_TABLE_SIZE + 1];
+extern uint16_t atan_table[ATAN_TABLE_SIZE + 1];
 extern uint16_t ln_table[LN_TABLE_SIZE];
 extern uint16_t exp_table[EXP_TABLE_SIZE+1];
 

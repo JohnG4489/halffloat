@@ -14,7 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "hf_common.h"
-#include "hf_lib.h"
 #include "hf_tests.h"
 #include "hf_precalc.h"
 
@@ -36,6 +35,7 @@ int main(int argc, char *argv[]) {
     //Initialisation des tables nécessaires
     fill_sin_table();
     fill_asin_table();
+    fill_atan_table();
     fill_exp_table();
     fill_ln_table();
     fill_tan_tables_dual();  //Nouvelle fonction dual-table optimisée à 75°
@@ -65,6 +65,14 @@ int main(int argc, char *argv[]) {
     debug_tan();
     debug_asin();
     debug_acos();
+    debug_atan();
+    debug_sinh();
+    debug_cosh();
+    debug_tanh();
+    debug_asinh();
+    debug_atan2();
+    
+    printf("\n=== ATAN2 SKIPPED FOR DEBUG ===\n");
 
     //Tests spécialisés ajoutés
     debug_denormal_values();
@@ -78,6 +86,7 @@ int main(int argc, char *argv[]) {
     debug_special_constants();
     debug_inverse_functions();
     debug_rsqrt_comparison();
+    debug_tan_near_pi2();
 
     //Message de conclusion
     printf("\n===== All Tests Completed =====\n");
