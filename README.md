@@ -2,7 +2,8 @@
 
 ### 🇫🇷 Version française
 
-L'objectif de cette bibliothèque est de présenter une implémentation **half-float (FP16)** de manière **purement algorithmique**, conforme à la norme **IEEE-754**, sans aucune optimisation spécifique au matériel.
+L'objectif de cette bibliothèque est de présenter une implémentation **half-float (FP16)** de manière **purement algorithmique**, conforme à la norme **IEEE-754-2008 / 2019**, sans aucune optimisation spécifique au matériel.
+Elle respecte les spécifications du format **binaire16**, y compris la gestion des **NaN**, des **valeurs infinies**, des **±0** et l'**ordre total IEEE** pour les comparaisons ("fmin", "fmax", etc.).
 
 Le code est écrit en **C99**, tout en respectant plusieurs **rigueurs du C90** afin de garantir la **portabilité** et la **lisibilité** du code.
 Les algorithmes sont simples, clairs et facilement **transposables en assembleur 6809 ou 68000**, voire sur **FPGA**.
@@ -16,7 +17,8 @@ Chaque fonction met l'accent sur la **compréhension de l'algorithme sous-jacent
 
 ### 🇬🇧 English version
 
-The purpose of this library is to provide a **purely algorithmic implementation** of the **half-float (FP16)** format, **compliant with the IEEE-754 standard**, without any hardware-specific optimization.
+The purpose of this library is to provide a **purely algorithmic implementation** of the **half-float (FP16)** format, **compliant with the IEEE-754-2008 / 2019 standard**, without any hardware-specific optimization.
+It implements the **binary16** specification, including correct handling of **NaNs**, **infinities**, **signed zeros (±0)**, and the **IEEE totalOrder** rules for comparisons ("fmin", "fmax", etc.).
 
 The code is written in **C99**, while preserving several **C90 strictness rules** to ensure **portability** and **readability**.
 Algorithms are simple, clear, and easily **translated into 6809 or 68000 assembly**, or implemented on **FPGA**.

@@ -44,7 +44,8 @@ int hf_cmp(uint16_t hf1, uint16_t hf2) {
  * Compare deux demi-flottants et renvoie le plus petit au format IEEE 754.
  *
  * Cas particuliers (IEEE 754):
- *  - NaN (quiet ou signaling) -> retourne qNaN (aucune exception levée)
+ *  - Si un seul opérande est NaN, retourne l'autre opérande
+ *  - Si les deux sont NaN, retourne NaN
  *  - min(+0,-0) = -0
  *  - min(+Inf, valeur) = valeur
  *  - min(-Inf, valeur) = -Inf
@@ -57,21 +58,32 @@ uint16_t hf_min(uint16_t hf1, uint16_t hf2) {
     uint16_t result = hf1;
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
-    int cmp = compare_half(&input1, &input2);
-
-    if(cmp == -2) {
-        //Propagation silencieuse du NaN
+    
+    //Si les deux sont NaN, retourner NaN
+    if(is_nan(&input1) && is_nan(&input2)) {
         result = HF_NAN;
     }
-    else if(cmp == 0 && is_zero(&input1) && is_zero(&input2)) {
-        //Cas +0 / -0 : on renvoie toujours -0
-        result = (input1.sign || input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
-    }
-    else if(cmp > 0) {
-        //hf1 > hf2, donc min = hf2
+    //Si seul input1 est NaN, retourner input2
+    else if(is_nan(&input1)) {
         result = hf2;
     }
-
+    //Si seul input2 est NaN, retourner input1 (déjà dans result)
+    else if(!is_nan(&input2)) {
+        //Aucun n'est NaN, comparaison normale
+        int cmp = compare_half(&input1, &input2);
+        
+        if(cmp == 0 && is_zero(&input1) && is_zero(&input2)) {
+            //Cas +0 / -0 : on renvoie toujours -0
+            result = (input1.sign || input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
+        }
+        else if(cmp > 0) {
+            //hf1 > hf2, donc min = hf2
+            result = hf2;
+        }
+        //Sinon hf1 <= hf2, result contient déjà hf1
+    }
+    //Sinon seul input2 est NaN, result contient déjà hf1
+    
     return result;
 }
 
@@ -81,7 +93,8 @@ uint16_t hf_min(uint16_t hf1, uint16_t hf2) {
  * Compare deux demi-flottants et renvoie le plus grand au format IEEE 754.
  *
  * Cas particuliers (IEEE 754):
- *  - NaN (quiet ou signaling) -> retourne qNaN (aucune exception levée)
+ *  - Si un seul opérande est NaN, retourne l'autre opérande
+ *  - Si les deux sont NaN, retourne NaN
  *  - max(+0,-0) = +0
  *  - max(+Inf, valeur) = +Inf
  *  - max(-Inf, valeur) = valeur
@@ -94,21 +107,32 @@ uint16_t hf_max(uint16_t hf1, uint16_t hf2) {
     uint16_t result = hf1;
     half_float input1 = decompose_half(hf1);
     half_float input2 = decompose_half(hf2);
-    int cmp = compare_half(&input1, &input2);
-
-    if(cmp == -2) {
-        //Propagation silencieuse du NaN
+    
+    //Si les deux sont NaN, retourner NaN
+    if(is_nan(&input1) && is_nan(&input2)) {
         result = HF_NAN;
     }
-    else if(cmp == 0 && is_zero(&input1) && is_zero(&input2)) {
-        //Cas +0 / -0 : on renvoie toujours +0
-        result = (input1.sign && input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
-    }
-    else if(cmp < 0) {
-        //hf1 < hf2, donc max = hf2
+    //Si seul input1 est NaN, retourner input2
+    else if(is_nan(&input1)) {
         result = hf2;
     }
-
+    //Si seul input2 est NaN, retourner input1 (déjà dans result)
+    else if(!is_nan(&input2)) {
+        //Aucun n'est NaN, comparaison normale
+        int cmp = compare_half(&input1, &input2);
+        
+        if(cmp == 0 && is_zero(&input1) && is_zero(&input2)) {
+            //Cas +0 / -0 : on renvoie toujours +0
+            result = (input1.sign && input2.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
+        }
+        else if(cmp < 0) {
+            //hf1 < hf2, donc max = hf2
+            result = hf2;
+        }
+        //Sinon hf1 >= hf2, result contient déjà hf1
+    }
+    //Sinon seul input2 est NaN, result contient déjà hf1
+    
     return result;
 }
 

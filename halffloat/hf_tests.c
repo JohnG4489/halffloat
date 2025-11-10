@@ -212,7 +212,6 @@ void debug_min(void) {
     float results[20][8];
     const char *headers[] = {"Value1", "Value2", "Result (hf_min)", "Result (fminf)", "Difference"};
     int i;
-
     for(i = 0; i < num_tests; i++) {
         float v1 = test_cases[i][0];
         float v2 = test_cases[i][1];
@@ -220,7 +219,7 @@ void debug_min(void) {
         uint16_t h2 = float_to_half(v2);
         uint16_t result_half = hf_min(h1, h2);
         float result_float = half_to_float(result_half);
-        float std_result = fminf(half_to_float(h1), half_to_float(h2));
+        float std_result = fminf(v1, v2);
         float diff = fabsf(result_float - std_result);
         results[i][0] = v1;
         results[i][1] = v2;
@@ -228,7 +227,6 @@ void debug_min(void) {
         results[i][3] = std_result;
         results[i][4] = diff;
     }
-
     print_formatted_table("### HF_MIN", headers, 5, results, num_tests);
     printf("\n");
 }
@@ -248,7 +246,6 @@ void debug_max(void) {
     float results[20][8];
     const char *headers[] = {"Value1", "Value2", "Result (hf_max)", "Result (fmaxf)", "Difference"};
     int i;
-
     for(i = 0; i < num_tests; i++) {
         float v1 = test_cases[i][0];
         float v2 = test_cases[i][1];
@@ -256,7 +253,7 @@ void debug_max(void) {
         uint16_t h2 = float_to_half(v2);
         uint16_t result_half = hf_max(h1, h2);
         float result_float = half_to_float(result_half);
-        float std_result = fmaxf(half_to_float(h1), half_to_float(h2));
+        float std_result = fmaxf(v1, v2);
         float diff = fabsf(result_float - std_result);
         results[i][0] = v1;
         results[i][1] = v2;
@@ -264,7 +261,6 @@ void debug_max(void) {
         results[i][3] = std_result;
         results[i][4] = diff;
     }
-
     print_formatted_table("### HF_MAX", headers, 5, results, num_tests);
     printf("\n");
 }
@@ -457,7 +453,16 @@ void debug_mul(void) {
         //Cas étendus avec NaN négatifs
         {half_to_float(hf_sqrt(float_to_half(-1.0f))), 4.0f},
         {-2.5f, half_to_float(hf_ln(float_to_half(-1.0f)))},
-        {half_to_float(hf_sqrt(float_to_half(-3.0f))), half_to_float(hf_sqrt(float_to_half(-2.0f)))}
+        {half_to_float(hf_sqrt(float_to_half(-3.0f))), half_to_float(hf_sqrt(float_to_half(-2.0f)))},
+        //Cas dénormalisés (subnormal values) - multiplication edge cases
+        //Denormal * Denormal
+        {5.96e-8f, 5.96e-8f}, {-5.96e-8f, 5.96e-8f}, {5.96e-8f, -5.96e-8f}, {-5.96e-8f, -5.96e-8f},
+        //Denormal * Large (max half-float ~65504)
+        {5.96e-8f, 65504.0f}, {5.96e-8f, -65504.0f}, {-5.96e-8f, 65504.0f}, {-5.96e-8f, -65504.0f},
+        //Large * Denormal
+        {65504.0f, 5.96e-8f}, {65504.0f, -5.96e-8f}, {-65504.0f, 5.96e-8f}, {-65504.0f, -5.96e-8f},
+        //Denormal * 1.0 (identity behavior and sign propagation)
+        {5.96e-8f, 1.0f}, {1.0f, 5.96e-8f}, {-5.96e-8f, 1.0f}, {1.0f, -5.96e-8f}
     };
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
@@ -2507,3 +2512,4 @@ static void print_formatted_table(const char *title, const char **headers, int n
         printf("\n");
     }
 }
+

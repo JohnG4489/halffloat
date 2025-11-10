@@ -88,6 +88,7 @@ float half_to_float(uint16_t hf);
 bool_t is_infinity(const half_float *hf);
 bool_t is_nan(const half_float *hf);
 bool_t is_zero(const half_float *hf);
+bool_t is_subnormal(const half_float *hf);
 
 //Décomposition et composition de demi-flottants
 half_float decompose_half(uint16_t hf);

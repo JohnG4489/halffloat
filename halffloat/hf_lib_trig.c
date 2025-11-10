@@ -326,8 +326,13 @@ uint16_t hf_sinh(uint16_t hf) {
 
     //Gestion unifiée des cas spéciaux
     if(is_nan(&input)) {
-        //NaN: signe déjà copié, changer seulement mantisse
+        //NaN: propager le signe, mantisse non nulle
         result.mant = 1;
+    }
+    //Subnormaux:preserver les subnormaux (sinh(x) ~= x pour tres petits x)
+    else if(is_subnormal(&input)) {
+        //subnormal non nul -> renvoyer l'entree
+        result = input;
     } else if(!is_infinity(&input)) {
         //Calcul via table exp : sinh(x) = sign(x) * (e^|x| - e^(-|x|)) / 2
         int32_t x_abs, exp_pos, exp_neg, diff;
@@ -343,7 +348,7 @@ uint16_t hf_sinh(uint16_t hf) {
         //Soustraire: e^x - e^(-x)
         diff = exp_pos - exp_neg;
         result.mant = diff >> 1;  //Diviser par 2 directement
-        
+    
         if(result.mant == 0 && diff != 0) {
             result.exp--;
             result.mant = diff >> 1;
@@ -499,19 +504,17 @@ uint16_t hf_asinh(uint16_t hf) {
         //asinh(+/-inf) = +/-inf
         result.exp = HF_EXP_FULL;
     } else if(!is_zero(&input)) {
-        //TODO: Implémenter asinh(x) = ln(x + sqrt(x^2 + 1)) en arithmétique à virgule fixe
-        //Implémentation temporaire en demi-précision via fonctions existantes
-        uint16_t absx = hf_abs(hf);             //|x|
-        uint16_t xsq  = hf_mul(absx, absx);     //x²
-        uint16_t one  = HF_ONE_POS;             //1.0
-        uint16_t sum  = hf_add(xsq, one);       //x² + 1
-        uint16_t root = hf_sqrt(sum);           //√(x² + 1)
-        uint16_t inner = hf_add(absx, root);    //|x| + √(x² + 1)
-        uint16_t lnval = hf_ln(inner);          //ln(|x| + √(x² + 1))
+        //TODO: implémenter asinh(x)=ln(x+sqrt(x^2+1)) en fixe
+        //Implémentation temporaire via fonctions existantes
+        uint16_t absx = hf_abs(hf);                 //|x|
+        uint16_t xsq  = hf_mul(absx, absx);         //x^2
+        uint16_t sum  = hf_add(xsq, HF_ONE_POS);    //x^2 + 1
+        uint16_t root = hf_sqrt(sum);               //sqrt(x^2+1)
+        uint16_t inner = hf_add(absx, root);        //|x| + sqrt(...)
+        uint16_t lnval = hf_ln(inner);              //ln(|x| + sqrt(...))
 
         result = decompose_half(lnval);
         result.sign = input.sign;
-
         //normalize_and_round(&result);
     }
 
@@ -553,21 +556,19 @@ uint16_t hf_acosh(uint16_t hf) {
             result.exp = HF_EXP_FULL;
         }
     } else if(hf_cmp(hf, HF_ONE_POS) < 0) {
-        //x < 1 -> NaN
-        result.sign = HF_ZERO_NEG;
+        //x < 1 -> retourner un NaN canonique (qNaN) avec signe positif
+        //result.sign = HF_ZERO_POS;
         result.exp = HF_EXP_FULL;
-        result.mant = 1;
-    } 
+        result.mant = 1; //qNaN mantisse non nulle
+    }
     else {
         //TODO: Implémenter acosh(x) = ln(x + sqrt(x² - 1)) en arithmétique à virgule fixe
         //Implémentation temporaire en demi-précision via fonctions existantes
-        uint16_t xsq  = hf_mul(hf, hf);
-        uint16_t one  = HF_ONE_POS;
-        uint16_t diff = hf_sub(xsq, one);
-        uint16_t root = hf_sqrt(diff);
-        uint16_t inner = hf_add(hf, root);
-        uint16_t lnval = hf_ln(inner);
-
+        uint16_t xsq  = hf_mul(hf, hf);             //x^2
+        uint16_t diff = hf_sub(xsq, HF_ONE_POS);    //x^2 - 1
+        uint16_t root = hf_sqrt(diff);              //sqrt(x^2 - 1)
+        uint16_t inner = hf_add(hf, root);          //x + sqrt(...)
+        uint16_t lnval = hf_ln(inner);              //ln(x + sqrt(...))
         result = decompose_half(lnval);
         //normalize_and_round(&result);
     }
@@ -609,22 +610,30 @@ uint16_t hf_atanh(uint16_t hf) {
         result.exp = HF_EXP_FULL;
     } 
     else if(hf_cmp(hf_abs(hf), HF_ONE_POS) > 0) {
-        //|x| > 1 -> NaN
-        result.sign = HF_ZERO_NEG;
+        //|x| > 1 -> retourner un NaN canonique positif (qNaN)
+        result.sign = HF_ZERO_POS;
         result.exp = HF_EXP_FULL;
         result.mant = 1;
-    } 
-    else {
+    } else {
         //TODO: Implémenter atanh(x) = 0.5 * ln((1+x)/(1-x)) en arithmétique à virgule fixe
         //Implémentation temporaire en demi-précision via fonctions existantes
-        uint16_t one  = HF_ONE_POS;
-        uint16_t sum  = hf_add(one, hf);   //1+x
-        uint16_t diff = hf_sub(one, hf);   //1-x
-        uint16_t div  = hf_div(sum, diff); //(1+x)/(1-x)
-        uint16_t lnval = hf_ln(div);
-        uint16_t half  = float_to_half(0.5f);
-        uint16_t res   = hf_mul(half, lnval);
-        result = decompose_half(res);
+
+        //Petits x (sous-normaux très proches de zéro) : atanh(x) ≈ x
+        //Pour éviter que des valeurs dénormalisées soient réduites à 0
+        //par des opérations intermédiaires, assigner directement le résultat
+        //si l'entrée est un subnormal non nul.
+        if(is_subnormal(&input)) {
+            //subnormal non nul -> atanh(x) ≈ x (préserver la valeur)
+            result = input;
+        } else {
+            uint16_t sum  = hf_add(HF_ONE_POS, hf);   //1+x
+            uint16_t diff = hf_sub(HF_ONE_POS, hf);   //1-x
+            uint16_t divv  = hf_div(sum, diff);       //(1+x)/(1-x)
+            uint16_t lnval = hf_ln(divv);             //ln((1+x)/(1-x))
+            uint16_t halfv = float_to_half(0.5f);     //0.5 en demi-précision
+            uint16_t res   = hf_mul(halfv, lnval);    //0.5 * ln(...)
+            result = decompose_half(res);
+        }
         //normalize_and_round(&result);
     }
 

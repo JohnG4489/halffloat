@@ -138,6 +138,16 @@ bool_t is_zero(const half_float *hf) {
 }
 
 /**
+ * @brief Vérifie si un demi-flottant représente un nombre subnormal
+ * 
+ * @param hf Le demi-flottant à vérifier
+ * @return true si le demi-flottant est subnormal, false sinon
+ */
+bool_t is_subnormal(const half_float *hf) {
+    return (hf->exp == HF_EXP_MIN) && (hf->mant < HF_MANT_NORM_MIN);
+}
+
+/**
  * @brief Décompose un uint16_t en demi-flottant
  *
  * @param hf La valeur uint16_t à décomposer
