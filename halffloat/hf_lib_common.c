@@ -191,7 +191,6 @@ uint16_t table_interpolate(const uint16_t *table, int size, uint32_t index, int 
 void exp_fixed(int32_t x_fixed, half_float *result) {
     int32_t k_exp = x_fixed / LNI_2;
     int32_t r_fixed = x_fixed - k_exp * LNI_2;
-    int32_t frac;
     int index;
 
     //Réduction à [0, ln(2)]: ajuster si r négatif
@@ -207,7 +206,7 @@ void exp_fixed(int32_t x_fixed, half_float *result) {
     //Interpolation linéaire pour remplir result->mant
     result->mant = exp_table[index];
     if(index < EXP_TABLE_SIZE - 1) {
-        frac = ((r_fixed * EXP_TABLE_SIZE) % LNI_2) << 8;
+        int32_t frac = ((r_fixed * EXP_TABLE_SIZE) % LNI_2) << 8;
         result->mant += ((exp_table[index + 1] - result->mant) * frac / LNI_2) >> 8;
     }
 

@@ -214,12 +214,13 @@ uint16_t hf_atan(uint16_t hf) {
             if(use_complement) {
                 //ratio = 1/|x|
                 ratio = (int32_t)(((int64_t)(1 << (HF_MANT_SHIFT + 15))) / norm);
-                if(ratio > (1 << 15)) ratio = (1 << 15);
             } else {
                 //ratio = |x|
                 ratio = norm << (15 - HF_MANT_SHIFT);
-                if(ratio > (1 << 15)) ratio = (1 << 15);
             }
+            
+            //Clamp ratio à 1.0 en Q15
+            if(ratio > (1 << 15)) ratio = (1 << 15);
         }
 
         //Interpolation via table_interpolate sur atan_table

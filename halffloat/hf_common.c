@@ -324,7 +324,7 @@ void normalize_and_round(half_float *result) {
  */
 void normalize_denormalized_mantissa(half_float *hf) {
     if(hf->mant != 0) {
-        while(hf->mant < HF_MANT_NORM_MIN) {
+        while(hf->mant <= (HF_MANT_NORM_MIN >> 1)) {
             hf->mant <<= 1;
             hf->exp--;
         }
@@ -358,7 +358,7 @@ hf_rounding_mode hf_get_rounding_mode(void) {
  * @return 1 si arrondi vers le haut, 0 sinon
  */
 static int should_round_up(uint32_t round_bits, uint32_t lsb, uint16_t sign) {
-    int result;
+    int result = 0;
     
     switch(current_rounding_mode) {
         case HF_ROUND_NEAREST_EVEN:
@@ -368,11 +368,7 @@ static int should_round_up(uint32_t round_bits, uint32_t lsb, uint16_t sign) {
         case HF_ROUND_NEAREST_UP:
             result = (round_bits >= HF_GUARD_BIT);
             break;
-            
-        case HF_ROUND_TOWARD_ZERO:
-            result = 0;
-            break;
-            
+
         case HF_ROUND_TOWARD_POS_INF:
             result = (!sign && round_bits);
             break;
@@ -381,8 +377,8 @@ static int should_round_up(uint32_t round_bits, uint32_t lsb, uint16_t sign) {
             result = (sign && round_bits);
             break;
             
+        case HF_ROUND_TOWARD_ZERO:
         default:
-            result = 0;
             break;
     }
     
