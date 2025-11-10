@@ -59,8 +59,7 @@ typedef enum {
 #define HF_PRECISION_SHIFT  5                                   //Décalage pour la précision
 #define HF_MANT_SHIFT       (HF_MANT_BITS + HF_PRECISION_SHIFT) //Décalage total mantisse (15)
 #define HF_EXP_FULL         (HF_EXP_BIAS + 1)                   //Pour indiquer si NaN ou Infini
-#define HF_EXP_MIN          (-HF_EXP_BIAS)                      //Exposant minimal absolu
-#define HF_EXP_SUBNORMAL    (-HF_EXP_BIAS + 1)                  //Exposant pour les subnormaux
+#define HF_EXP_MIN          (-HF_EXP_BIAS + 1)                  //Exposant réel minimal pour fp16 (subnormaux) = -14
 #define HF_MANT_NORM_MIN    (1 << HF_MANT_SHIFT)
 #define HF_MANT_NORM_MAX    (1 << (HF_MANT_SHIFT + 1))
 #define HF_GUARD_BIT        (1 << (HF_PRECISION_SHIFT - 1))     //bit du milieu pour l'arrondi

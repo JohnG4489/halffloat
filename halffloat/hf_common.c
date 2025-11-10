@@ -52,9 +52,10 @@ uint16_t float_to_half(float f) {
         //Vérifier overflow après arrondi
         result |= (exp_biased > HF_MASK_EXP) ? HF_INFINITY_POS : (exp_biased << HF_MANT_BITS) | (mant >> 13);
     }
-    else if(exp >= (HF_EXP_MIN - HF_MANT_BITS)) {
-        //Valeur subnormale (exp entre -25 et -15)
-        uint32_t shift = (uint32_t)(HF_EXP_SUBNORMAL - exp);
+    else if(exp >= (HF_EXP_MIN - HF_MANT_BITS - 1)) {
+        //Valeur subnormale: exposants très petits nécessitant un décalage
+        //pour récupérer la mantisse significative (bornes dépendant de HF_MANT_BITS)
+        uint32_t shift = (uint32_t)(HF_EXP_MIN - exp);
         mant = (mant | 0x800000) >> shift; //Ajouter bit implicite et décaler
         mant = (mant + 0x1000) >> 13; //Arrondi puis extraction des 10 bits
         result |= mant;
@@ -150,7 +151,7 @@ half_float decompose_half(uint16_t hf) {
     result.mant = (hf & HF_MASK_MANT) << HF_PRECISION_SHIFT;
    
     if(exp == 0) {
-        //Subnormal: exposant = HF_EXP_MIN, mantisse sans bit implicite
+        //Subnormal: stocker l'exposant réel des subnormaux (HF_EXP_MIN == -14)
         result.exp = HF_EXP_MIN;
     }
     else if(exp == HF_MASK_EXP) {
@@ -173,26 +174,27 @@ half_float decompose_half(uint16_t hf) {
  * @return La valeur uint16_t correspondante
  */
 uint16_t compose_half(const half_float *hf) {
-    uint16_t result = hf->sign;  //Déjà 0x0000 ou 0x8000
+    //Initialisation avec le bit de signe (0x0000 ou 0x8000)
+    uint16_t result = hf->sign;
 
     //Gestion des cas spéciaux
-    if(hf->exp == HF_EXP_FULL) {
-        //Infini ou NaN
+    if (hf->exp == HF_EXP_FULL) {
+        //Cas infini ou NaN: si mantisse non nulle, c'est NaN, sinon infini
         result |= (hf->mant != 0 ? HF_NAN : HF_INFINITY_POS);
-    }
-    else if(hf->exp == HF_EXP_MIN) {
-        //Subnormal: décalage +1 pour les subnormaux
-        uint16_t mant_bits = (hf->mant >> (HF_PRECISION_SHIFT + 1)) & HF_MASK_MANT;
-        result |= mant_bits;
-    }
-    else if(hf->mant != 0) {
-        //Nombre normalisé: retirer le bit implicite
+    } else if (hf->mant & HF_MANT_NORM_MIN) {
+        //Cas normalisé: bit implicite présent dans la mantisse
+        //Encoder l'exposant avec le biais et écrire la mantisse sans le bit implicite
         uint16_t exp_bits = (hf->exp + HF_EXP_BIAS) & HF_MASK_EXP;
         uint16_t mant_bits = (hf->mant >> HF_PRECISION_SHIFT) & HF_MASK_MANT;
         result |= (exp_bits << HF_MANT_BITS) | mant_bits;
+    } else {
+        //Cas subnormal: pas de bit implicite, extraire les bits bruts de la mantisse
+        //Utilise le même décalage de précision que dans decompose_half pour symétrie
+        uint16_t mant_bits = (hf->mant >> HF_PRECISION_SHIFT) & HF_MASK_MANT;
+        result |= mant_bits;
     }
-    //Cas Zéro par défaut: signe préservé
-   
+
+    //Cas zéro par défaut: seul le signe est préservé
     return result;
 }
 
@@ -311,8 +313,7 @@ void normalize_and_round(half_float *result) {
  * @param hf Pointeur vers la structure half_float à normaliser
  */
 void normalize_denormalized_mantissa(half_float *hf) {
-    if(hf->exp == HF_EXP_MIN) {
-        hf->exp++;
+    if(hf->mant != 0) {
         while(hf->mant < HF_MANT_NORM_MIN) {
             hf->mant <<= 1;
             hf->exp--;

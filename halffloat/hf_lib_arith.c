@@ -292,7 +292,12 @@ uint16_t hf_sqrt(uint16_t hf) {
     else if(!input.sign && !is_infinity(&input) && !is_nan(&input)) {
         //Calcul arithmétique normal (x > 0 fini, non-zéro déjà exclu)
         uint32_t root = 0;
-        uint32_t value = (uint32_t)(input.mant << 15);
+        uint32_t value = 0;
+
+        //Si l'entrée est subnormale, la mantisse doit d'abord être normalisée
+        //pour que l'algorithme de racine carrée voie le bit implicite.
+        normalize_denormalized_mantissa(&input);
+        value = (uint32_t)(input.mant << 15);
         
         //Exposant impair: ajustement de l'exposant à pair + mantisse
         if(input.exp & 1) {
@@ -345,7 +350,12 @@ uint16_t hf_rsqrt(uint16_t hf) {
     else if(!is_zero(&input)) {
         //Calcul arithmétique normal: 1/sqrt(x)
         uint32_t root = 0;
-        uint32_t value = (uint32_t)(input.mant << 15);
+        uint32_t value = 0;
+
+        //Normaliser les subnormales avant le calcul pour éviter des
+        //écarts importants sur les très petites valeurs.
+        normalize_denormalized_mantissa(&input);
+        value = (uint32_t)(input.mant << 15);
        
         //Exposant impair: ajustement de l'exposant à pair + mantisse
         if(input.exp & 1) {
@@ -379,7 +389,6 @@ uint16_t hf_cbrt(uint16_t hf) {
     return HF_NAN;
 }
 
-//Opérations avancées - stubs pour l'instant
 /**
  * @brief Multiplication-addition fusionnée (FMA)
  *

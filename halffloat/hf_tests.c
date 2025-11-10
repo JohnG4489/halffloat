@@ -1621,7 +1621,7 @@ void debug_atanh(void) {
  * @brief Tests spécialisés pour les valeurs dénormalisées FP16
  * 
  * Cette fonction teste le comportement des fonctions mathématiques
- * avec des valeurs dénormalisées (subnormal) en FP16, qui sont
+ * avec des valeurs dénormalisées (subnormal) en FP16 (exposant réel -14), qui sont
  * critiques pour la précision aux limites de représentation.
  */
 void debug_denormal_values(void) {
@@ -2402,7 +2402,7 @@ void debug_tan_near_pi2(void) {
             results[idx][2] = tan_std;
             results[idx][3] = abs_err;
             results[idx][4] = rel_err;
-            results[idx][5] = 0.0f; // note unused
+            results[idx][5] = 0.0f; //note unused
             idx++;
         }
     }

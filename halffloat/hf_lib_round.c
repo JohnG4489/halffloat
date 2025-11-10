@@ -50,6 +50,7 @@ uint16_t hf_ceil(uint16_t hf) {
                     result.mant += (1U << (frac_bits + HF_PRECISION_SHIFT));
                 }
             }
+
             normalize_and_round(&result);
         }
     }
@@ -94,6 +95,7 @@ uint16_t hf_floor(uint16_t hf) {
                     result.mant += (1U << (frac_bits + HF_PRECISION_SHIFT));
                 }
             }
+            
             normalize_and_round(&result);
         }
     }

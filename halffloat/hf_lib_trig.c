@@ -718,13 +718,11 @@ static uint16_t asinus_shiftable(uint16_t hf, uint32_t shift) {
         //Calculer via la table asin si dans le domaine |x| <= 1.0
         if(norm <= HF_MANT_NORM_MIN) {
             const int bits = HF_MANT_SHIFT - ASIN_TABLE_BITS;
-           
-            //Interpolation linéaire via fonction commune
-            result.exp = 0;
 
             //asin_table est allouée avec ASIN_TABLE_SIZE+1 entrées pour
             //permettre un accès sûr à idx1 lors de l'interpolation.
             //On passe donc la longueur complète à table_interpolate.
+            result.exp = 0;
             result.mant = (int32_t)table_interpolate(asin_table, ASIN_TABLE_SIZE + 1, norm, bits);
            
             //Appliquer le shift pour acos, ou le signe pour asin
