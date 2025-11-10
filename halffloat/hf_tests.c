@@ -760,6 +760,47 @@ void debug_rsqrt(void) {
 }
 
 /**
+ * @brief Teste hf_fma (a*b + c) sur quelques cas représentatifs
+ */
+void debug_fma(void) {
+    float test_cases[][3] = {
+        {1.0f, 2.0f, 3.0f},
+        {0.5f, 0.5f, 0.25f},
+        {-1.0f, 4.0f, 2.0f},
+        {65504.0f, 1.0f, -65504.0f},
+        {0.000061035f, 2.0f, 0.0001f},
+    };
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    float results[10][8];
+    const char *headers[] = {"a", "b", "c", "Result (hf_fma)", "Result (float)", "Difference"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float a = test_cases[i][0];
+        float b = test_cases[i][1];
+        float c = test_cases[i][2];
+        uint16_t ha = float_to_half(a);
+        uint16_t hb = float_to_half(b);
+        uint16_t hc = float_to_half(c);
+
+        uint16_t hr = hf_fma(ha, hb, hc);
+        float r = half_to_float(hr);
+        float ref = a * b + c;
+        float diff = fabsf(r - ref);
+
+        results[i][0] = a;
+        results[i][1] = b;
+        results[i][2] = c;
+        results[i][3] = r;
+        results[i][4] = ref;
+        results[i][5] = diff;
+    }
+
+    print_formatted_table("### HF_FMA", headers, 6, results, num_tests);
+    printf("\n");
+}
+
+/**
  * @brief Fonction de débogage pour tester la fonction hf_pow avec divers cas de test
  * 
  * Cette fonction teste l'exponentiation de demi-flottants (base^exposant)

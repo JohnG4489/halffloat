@@ -45,9 +45,16 @@ int main(int argc, char *argv[]) {
 
     //Série de tests pour différentes fonctions mathématiques
     debug_int();
+    debug_ceil();
+    debug_floor();
+    debug_round();
+    debug_trunc();
+
+    debug_min();
+    debug_max();
+
     debug_abs();
     debug_neg();
-
     debug_add();
     //debug_sub();
     debug_mul();
@@ -55,10 +62,11 @@ int main(int argc, char *argv[]) {
     debug_inv();
     debug_sqrt();
     debug_rsqrt();
+    debug_fma();
 
-    debug_ln();
-    debug_exp();
     debug_pow();
+    debug_exp();
+    debug_ln();
 
     debug_sin();
     debug_cos();
@@ -66,11 +74,13 @@ int main(int argc, char *argv[]) {
     debug_asin();
     debug_acos();
     debug_atan();
+    debug_atan2();
     debug_sinh();
     debug_cosh();
     debug_tanh();
     debug_asinh();
-    debug_atan2();
+    debug_acosh();
+    debug_atanh();
     
     printf("\n=== ATAN2 SKIPPED FOR DEBUG ===\n");
 

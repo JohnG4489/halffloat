@@ -32,6 +32,7 @@ void debug_div(void);
 void debug_inv(void);
 void debug_sqrt(void);
 void debug_rsqrt(void);
+void debug_fma(void);
 
 void debug_pow(void);
 void debug_exp(void);

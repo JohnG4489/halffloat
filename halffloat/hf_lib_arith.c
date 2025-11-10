@@ -400,8 +400,57 @@ uint16_t hf_cbrt(uint16_t hf) {
  * @return Le résultat de (hfa * hfb) + hfc
  */
 uint16_t hf_fma(uint16_t hfa, uint16_t hfb, uint16_t hfc) {
-    (void)hfa; (void)hfb; (void)hfc;
-    return HF_NAN;
+    half_float result;
+    half_float inputa = decompose_half(hfa);
+    half_float inputb = decompose_half(hfb);
+    half_float inputc = decompose_half(hfc);
+
+    /* Initialisation par défaut: NaN positif (sécurité) */
+    result.sign = HF_ZERO_POS;
+    result.exp = HF_EXP_FULL;
+    result.mant = 1;
+
+    /* Cas spéciaux: NaN - propager le premier NaN rencontré */
+    if(is_nan(&inputa) || is_nan(&inputb) || is_nan(&inputc)) {
+        if(is_nan(&inputa)) result.sign = inputa.sign;
+        else if(is_nan(&inputb)) result.sign = inputb.sign;
+        else result.sign = inputc.sign;
+    }
+    /* inf * 0 -> NaN */
+    else if((is_infinity(&inputa) && is_zero(&inputb)) || (is_infinity(&inputb) && is_zero(&inputa))) {
+        result.sign = HF_ZERO_NEG;
+    }
+    /* produit inf (+/-) */
+    else if(is_infinity(&inputa) || is_infinity(&inputb)) {
+        uint16_t prod_sign = (inputa.sign ^ inputb.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
+
+        if(is_infinity(&inputc)) {
+            /* inf + inf : si signes opposés -> NaN, sinon inf */
+            if(prod_sign != inputc.sign) {
+                result.sign = HF_ZERO_NEG;
+            } else {
+                result = inputc; /* inf with sign */
+            }
+        } else {
+            /* inf + finite = inf */
+            result.sign = prod_sign;
+            result.exp = HF_EXP_FULL;
+            result.mant = 0;
+        }
+    }
+    /* c inf and product finite -> return c */
+    else if(is_infinity(&inputc)) {
+        result = inputc;
+    }
+    else {
+        /* Cas général: calculer a*b + c via helpers */
+        uint16_t prod = hf_mul(hfa, hfb);
+        uint16_t sum = hf_add(prod, hfc);
+        result = decompose_half(sum);
+    }
+
+    /* Unique point de sortie: composer */
+    return compose_half(&result);
 }
 
 /**
