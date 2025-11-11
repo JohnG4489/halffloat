@@ -69,7 +69,11 @@ int main(int argc, char *argv[]) {
 
     debug_pow();
     debug_exp();
+    debug_exp2();
+    debug_exp10();
     debug_ln();
+    debug_log2();
+    debug_log10();
 
     debug_sin();
     debug_cos();

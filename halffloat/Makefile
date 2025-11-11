@@ -2,7 +2,8 @@
 
 # Outils et options
 CC = gcc
-CFLAGS ?= -fno-aggressive-loop-optimizations -std=c99 -Wall -Wextra -Werror -Wpedantic -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -Wdeclaration-after-statement -Werror=unused-variable -O3 -march=native -mtune=native -flto -ffast-math -funroll-loops -m64
+CFLAGS ?= -fno-aggressive-loop-optimizations -std=c99 -Wall -Wextra -Werror -Wpedantic -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -Wdeclaration-after-statement -Werror=unused-variable -O3 -march=native -mtune=native -ffast-math -funroll-loops -m64
+LTO ?= -flto=1
 
 # Sources/objets
 SRC := $(wildcard *.c)
@@ -56,3 +57,6 @@ info:
 	@echo "  info    - Affiche ces informations"
 
 .PHONY: all clean info build-gcc
+
+release: CFLAGS += $(LTO)
+release: clean all

@@ -139,19 +139,12 @@ uint16_t hf_max(uint16_t hf1, uint16_t hf2) {
 /**
  * @brief Sépare la partie entière et fractionnaire
  *
- * @param hf Le demi-flottant à décomposer
- * @param intpart Pointeur vers la partie entière (optionnel)
- * @return La partie fractionnaire
- */
-/**
- * @brief Sépare la partie entière et fractionnaire
- *
  * Décompose un demi-flottant en sa partie entière et sa partie fractionnaire.
  * Les deux parties ont le même signe que l'entrée.
  *
  * Cas particuliers (IEEE 754):
- *  - modf(±0) = ±0 (partie entière) + ±0 (partie fractionnaire)
- *  - modf(±Inf) = ±Inf (partie entière) + ±0 (partie fractionnaire)
+ *  - modf(+/-0) = +/-0 (partie entière) + +/-0 (partie fractionnaire)
+ *  - modf(+/-Inf) = +/-Inf (partie entière) + +/-0 (partie fractionnaire)
  *  - modf(NaN) = NaN (partie entière) + NaN (partie fractionnaire)
  *
  * @param hf Le demi-flottant à décomposer
@@ -159,47 +152,48 @@ uint16_t hf_max(uint16_t hf1, uint16_t hf2) {
  * @return La partie fractionnaire
  */
 uint16_t hf_modf(uint16_t hf, uint16_t *intpart) {
-    //Initialisation
     half_float input = decompose_half(hf);
-    half_float hf_int = input;
-    half_float hf_frac = input;
+    half_float hf_frac;
     
-    //Cas spéciaux: Inf
-    if(is_infinity(&input)) {
-        hf_frac.exp = HF_EXP_MIN;
-        hf_frac.mant = 0;
+    //Initialisation
+    hf_frac.sign = input.sign;
+    hf_frac.exp = HF_EXP_MIN;
+    hf_frac.mant = 0;
+    
+    //Cas spéciaux: Zero, NaN, Inf
+    //Zero et NaN: frac = input, int = input
+    //Inf: frac = +/-0 (déjà initialisé), int = input
+    if(is_zero(&input) || is_nan(&input)) {
+        hf_frac = input;
     }
-    //Cas normaux et subnormaux (Zero et NaN restent inchangés)
-    else if(!is_zero(&input) && !is_nan(&input)) {
+    //Cas normaux et subnormaux
+    else if(!is_infinity(&input)) {
         int exp_val = input.exp;
         
-        //|hf| < 1 : partie entière = ±0, partie fractionnaire = hf
+        //|hf| < 1: partie entière = +/-0, partie fractionnaire = hf
         if(exp_val < 0) {
-            hf_int.exp = HF_EXP_MIN;
-            hf_int.mant = 0;
+            hf_frac = input;
+            input.exp = HF_EXP_MIN;
+            input.mant = 0;
         }
-        //|hf| >= 2^10 : pas de partie fractionnaire
-        else if(exp_val >= HF_MANT_BITS) {
-            hf_frac.exp = HF_EXP_MIN;
-            hf_frac.mant = 0;
-        }
-        else {
-            //Séparer mantisse en partie entière et fractionnaire
+        //1 <= |hf| < 2^10: séparer partie entière et fractionnaire
+        else if(exp_val < HF_MANT_BITS) {
             int shift = HF_MANT_BITS - exp_val;
             uint32_t mask = (1U << (shift + HF_PRECISION_SHIFT)) - 1U;
-            
-            hf_int.mant = input.mant & ~mask;
+
             hf_frac.mant = input.mant & mask;
+            input.mant &= ~mask;
             
-            //Préparer la partie fractionnaire
-            if(hf_frac.mant == 0)  hf_frac.exp = HF_EXP_MIN;
+            //Si partie fractionnaire non nulle, normaliser
+            if(hf_frac.mant != 0) hf_frac.exp = input.exp;
 
             normalize_and_round(&hf_frac);
         }
+        //|hf| >= 2^10: pas de partie fractionnaire (frac déjà à +/-0)
     }
     
     //Composer les résultats
-    if(intpart) *intpart = compose_half(&hf_int);
+    if(intpart) *intpart = compose_half(&input);
     return compose_half(&hf_frac);
 }
 

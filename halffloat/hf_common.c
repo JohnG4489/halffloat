@@ -279,18 +279,18 @@ void normalize_and_round(half_float *result) {
         if(shift > 0) result->mant <<= shift;
         else if(shift < 0) result->mant >>= -shift;
         result->exp -= shift;
-    }
 
-    //ARRONDI selon le mode configuré
-    if(result->mant & HF_GUARD_BIT) {
-        uint32_t round_bits = result->mant & HF_ROUND_BIT_MASK;
-        uint32_t lsb = result->mant & (1U << HF_PRECISION_SHIFT);
-        
-        if(should_round_up(round_bits, lsb, result->sign)) {
-            result->mant += (1U << HF_PRECISION_SHIFT);
-            if(result->mant >= HF_MANT_NORM_MAX) {
-                result->mant >>= 1;
-                result->exp++;
+        //ARRONDI selon le mode configuré
+        if(result->mant & HF_GUARD_BIT) {
+            uint32_t round_bits = result->mant & HF_ROUND_BIT_MASK;
+            uint32_t lsb = result->mant & (1U << HF_PRECISION_SHIFT);
+            
+            if(should_round_up(round_bits, lsb, result->sign)) {
+                result->mant += (1U << HF_PRECISION_SHIFT);
+                if(result->mant >= HF_MANT_NORM_MAX) {
+                    result->mant >>= 1;
+                    result->exp++;
+                }
             }
         }
     }

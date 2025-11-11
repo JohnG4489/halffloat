@@ -443,7 +443,8 @@ uint16_t hf_fma(uint16_t hfa, uint16_t hfb, uint16_t hfc) {
         result = inputc;
     }
     else {
-        //Cas général: calculer a*b + c via helpers
+        //TODO: implémenter le calcul FMA exact a*b + c
+        //Implémentation temporaire via fonctions existantes
         uint16_t prod = hf_mul(hfa, hfb);
         uint16_t sum = hf_add(prod, hfc);
         result = decompose_half(sum);

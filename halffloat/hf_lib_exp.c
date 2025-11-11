@@ -12,6 +12,7 @@
 
 #include "hf_lib_exp.h"
 #include "hf_lib_common.h"
+#include "hf_lib_arith.h"
 
 /**
  * @brief Calcule le logarithme naturel d'un demi-flottant
@@ -257,41 +258,174 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
 /**
  * @brief Calcule le logarithme en base 2 d'un demi-flottant
  *
- * @param a Le demi-flottant dont on veut calculer le logarithme en base 2
- * @return Le logarithme en base 2 de a
+ * @param hf Le demi-flottant dont on veut calculer le logarithme en base 2
+ * @return Le logarithme en base 2 de hf
  */
-uint16_t hf_log2(uint16_t a) {
-    (void)a; return HF_NAN;
+uint16_t hf_log2(uint16_t hf) {
+    half_float result;
+    half_float input = decompose_half(hf);
+
+    //Initialisation par defaut //évite branchement else
+    result.sign = HF_ZERO_POS;
+    result.exp  = HF_EXP_FULL; //utilisé pour inf/NaN par defaut
+    result.mant = 0;
+
+    //Gestion des cas particuliers en priorité
+    if(is_nan(&input)) {
+        //Propagation du NaN//meme signe
+        result.sign = input.sign;
+        result.mant = 1; //mantisse non nulle => NaN
+    }
+    else if(is_zero(&input)) {
+        //log2(0) = -inf//signe negatif
+        result.sign = HF_ZERO_NEG;
+        //mant=0 + exp full => inf
+    }
+    else if(input.sign) {
+        //log2(value<0) = NaN//propager le signe
+        result.sign = input.sign;
+        result.mant = 1;
+    }
+    else if(is_infinity(&input)) {
+        //log2(+inf) = +inf
+        result = input;
+    }
+    else {
+        //TODO: Implémenter log2(x) = ln(x) / ln(2)
+        //Implémentation temporaire en demi-précision via fonctions existantes
+        uint16_t ln = hf_ln(hf);
+        uint16_t ln2 = float_to_half(0.6931471805599453f);
+        uint16_t res = hf_div(ln, ln2);
+        result = decompose_half(res);
+    }
+
+    return compose_half(&result);
 }
 
 /**
  * @brief Calcule le logarithme en base 10 d'un demi-flottant
  *
- * @param a Le demi-flottant dont on veut calculer le logarithme en base 10
- * @return Le logarithme en base 10 de a
+ * @param hf Le demi-flottant dont on veut calculer le logarithme en base 10
+ * @return Le logarithme en base 10 de hf
  */
-uint16_t hf_log10(uint16_t a) {
-    (void)a; return HF_NAN;
+uint16_t hf_log10(uint16_t hf) {
+    half_float result;
+    half_float input = decompose_half(hf);
+
+    //Initialisation par defaut //évite branchement else
+    result.sign = HF_ZERO_POS;
+    result.exp  = HF_EXP_FULL; //utilisé pour inf/NaN par defaut
+    result.mant = 0;
+
+    //Gestion des cas particuliers en priorité
+    if(is_nan(&input)) {
+        //Propagation du NaN//meme signe
+        result.sign = input.sign;
+        result.mant = 1; //mantisse non nulle => NaN
+    }
+    else if(is_zero(&input)) {
+        //log10(0) = -inf//signe negatif
+        result.sign = HF_ZERO_NEG;
+        //mant=0 + exp full => inf
+    }
+    else if(input.sign) {
+        //log10(value<0) = NaN//propager le signe
+        result.sign = input.sign;
+        result.mant = 1;
+    }
+    else if(is_infinity(&input)) {
+        //log10(+inf) = +inf
+        result = input;
+    }
+    else {
+        //TODO: Implémenter log10(x) = ln(x) / ln(10)
+        //Implémentation temporaire en demi-précision via fonctions existantes
+        uint16_t ln = hf_ln(hf);
+        uint16_t ln10 = float_to_half(2.302585092994046f);
+        uint16_t res = hf_div(ln, ln10);
+        result = decompose_half(res);
+    }
+
+    return compose_half(&result);
 }
 
 /**
  * @brief Calcule 2^x pour un demi-flottant x
  *
- * @param a L'exposant
- * @return 2^a
+ * @param hf L'exposant
+ * @return 2^hf
  */
-uint16_t hf_exp2(uint16_t a) {
-    (void)a; return HF_NAN;
+uint16_t hf_exp2(uint16_t hf) {
+    half_float result;
+    half_float input = decompose_half(hf);
+
+    //Initialisation par defaut
+    result.sign = HF_ZERO_POS;
+    result.exp = 0;
+    result.mant = 0;
+
+    //Cas speciaux
+    if(is_nan(&input)) {
+        result.sign = input.sign;
+        result.exp = HF_EXP_FULL;
+        result.mant = 1;
+    }
+    else if(is_infinity(&input)) {
+        //2^(+inf) = +inf ; 2^(-inf) = 0
+        result.exp = -HF_EXP_BIAS;
+        if(!input.sign) result = input; //+inf
+        //sinon -inf -> 0
+    }
+    else {
+        //TODO: Implémenter 2^x directement sans passer par e^(x * ln(2))
+        //Implementation temporaire via fonctions existantes
+        //On calcule x * ln(2) en demi-précision puis on appelle hf_exp
+        uint16_t ln2_half = float_to_half(0.6931471805599453f);
+        uint16_t prod = hf_mul(hf, ln2_half);
+        uint16_t res_bits = hf_exp(prod);
+        result = decompose_half(res_bits);
+    }
+
+    return compose_half(&result);
 }
 
 /**
  * @brief Calcule 10^x pour un demi-flottant x
  *
- * @param a L'exposant
- * @return 10^a
+ * @param hf L'exposant
+ * @return 10^hf
  */
-uint16_t hf_exp10(uint16_t a) {
-    (void)a; return HF_NAN;
+uint16_t hf_exp10(uint16_t hf) {
+    half_float result;
+    half_float input = decompose_half(hf);
+
+    //Initialisation par defaut
+    result.sign = HF_ZERO_POS;
+    result.exp = 0;
+    result.mant = 0;
+
+    //Cas speciaux
+    if(is_nan(&input)) {
+        result.sign = input.sign;
+        result.exp = HF_EXP_FULL;
+        result.mant = 1;
+    }
+    else if(is_infinity(&input)) {
+        //10^(+inf) = +inf ; 10^(-inf) = 0
+        result.exp = -HF_EXP_BIAS;
+        if(!input.sign) result = input; //+inf
+        //sinon -inf -> 0
+    }
+    else {
+        //TODO: Implémenter 10^x directement sans passer par e^(x * ln(10))
+        //Implementation temporaire via fonctions existantes
+        uint16_t ln10_half = float_to_half(2.302585092994046f);
+        uint16_t prod = hf_mul(hf, ln10_half);
+        uint16_t res_bits = hf_exp(prod);
+        result = decompose_half(res_bits);
+    }
+
+    return compose_half(&result);
 }
 
 /**

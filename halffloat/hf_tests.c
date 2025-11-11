@@ -1173,6 +1173,206 @@ void debug_ln(void) {
 }
 
 /**
+ * @brief Fonction de débogage pour tester la fonction hf_log2
+ *
+ * Teste log2 pour les cas particuliers puis pour des valeurs generales
+ */
+void debug_log2(void) {
+    float test_values[] = {
+        //Cas speciaux explicites
+        NAN, half_to_float(HF_NAN), INFINITY, -INFINITY, half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG),
+        0.0f, -0.0f,
+        //Negatifs repondant a NaN
+        -1.0f, -0.5f, -2.0f, -65504.0f,
+        //Valeurs usuelles et fractions
+        1.0f, 2.0f, 0.5f, 4.0f, 0.25f, 0.125f, 0.75f, 1.5f, 3.0f,
+        //Puissances de deux (positives)
+        8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f,
+        //Puissances de deux (negatives)
+        0.5f, 0.25f, 0.125f, 0.0625f, 0.03125f, 0.015625f,
+        //Grandes valeurs et frontieres FP16
+        10.0f, 100.0f, 65504.0f,
+        //Petites valeurs normales et subnormales
+        2.0e-4f, 0.000061035f, 0.000030517f, 5.96e-8f, 1e-7f, 1e-10f,
+        //Proches de 1 pour tester la precision
+        0.9999f, 1.0001f, 1.00097656f,
+        //Quelques valeurs limites/aleatoires
+        3.14159f, 2.71828f, 0.33333334f, 12345.0f
+    };
+    int num_tests = sizeof(test_values) / sizeof(test_values[0]);
+
+    float results[200][8];
+    const char *headers[] = {"Value", "Result (hf_log2)", "Result (log2f)", "Difference"};
+    int i, row = 0;
+
+    for(i = 0; i < num_tests; i++) {
+        float v;
+        uint16_t hv;
+        uint16_t r_hf;
+        float r;
+        float std;
+        float diff;
+
+        v = test_values[i];
+        hv = float_to_half(v);
+        r_hf = hf_log2(hv);
+        r = half_to_float(r_hf);
+
+        if(isnan(v)) std = NAN;
+        else if(isinf(v)) std = (v > 0.0f) ? INFINITY : NAN; //log2(-inf) -> NaN
+        else if(v == 0.0f) std = -INFINITY;
+        else if(v < 0.0f) std = NAN;
+        else std = log2f(half_to_float(hv)); //reference: valeur quantifiee en FP16
+
+        diff = (isnan(r) && isnan(std)) ? 0.0f : fabsf(r - std);
+        results[row][0] = v;
+        results[row][1] = r;
+        results[row][2] = std;
+        results[row][3] = diff;
+        row++;
+    }
+
+    print_formatted_table("### HF_LOG2", headers, 4, results, row);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_log10
+ *
+ * Teste log10 pour les cas particuliers puis pour des valeurs generales
+ */
+void debug_log10(void) {
+    //Réutilise l'ensemble de valeurs de test de debug_log2 pour cohérence
+    float test_values[] = {
+        NAN, half_to_float(HF_NAN), INFINITY, -INFINITY, half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG),
+        0.0f, -0.0f,
+        -1.0f, -0.5f, -2.0f, -65504.0f,
+        1.0f, 2.0f, 0.5f, 4.0f, 0.25f, 0.125f, 0.75f, 1.5f, 3.0f,
+        8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f,
+        0.5f, 0.25f, 0.125f, 0.0625f, 0.03125f, 0.015625f,
+        10.0f, 100.0f, 65504.0f,
+        2.0e-4f, 0.000061035f, 0.000030517f, 5.96e-8f, 1e-7f, 1e-10f,
+        0.9999f, 1.0001f, 1.00097656f,
+        3.14159f, 2.71828f, 0.33333334f, 12345.0f
+    };
+    int num_tests = sizeof(test_values) / sizeof(test_values[0]);
+
+    float results[200][8];
+    const char *headers[] = {"Value", "Result (hf_log10)", "Result (log10f)", "Difference"};
+    int i, row = 0;
+
+    for(i = 0; i < num_tests; i++) {
+        float v;
+        uint16_t hv;
+        uint16_t r_hf;
+        float r;
+        float std;
+        float diff;
+
+        v = test_values[i];
+        hv = float_to_half(v);
+        r_hf = hf_log10(hv);
+        r = half_to_float(r_hf);
+
+        if(isnan(v)) std = NAN;
+        else if(isinf(v)) std = (v > 0.0f) ? INFINITY : NAN; //log10(-inf) -> NaN
+        else if(v == 0.0f) std = -INFINITY;
+        else if(v < 0.0f) std = NAN;
+        else std = log10f(half_to_float(hv)); //reference: valeur quantifiee en FP16
+
+        diff = (isnan(r) && isnan(std)) ? 0.0f : fabsf(r - std);
+        results[row][0] = v;
+        results[row][1] = r;
+        results[row][2] = std;
+        results[row][3] = diff;
+        row++;
+    }
+
+    print_formatted_table("### HF_LOG10", headers, 4, results, row);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_exp2
+ *
+ * Teste 2^x pour les cas particuliers puis pour des valeurs generales
+ */
+void debug_exp2(void) {
+    float test_values[] = {
+        NAN, half_to_float(HF_NAN), INFINITY, -INFINITY, half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG),
+        -20.0f, -10.0f, -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 4.0f, 10.0f, 20.0f,
+        15.0f, 11.0f, 12.0f, 13.0f, 16.0f, 8.0f
+    };
+    int num_tests = sizeof(test_values)/sizeof(test_values[0]);
+    float results[64][8];
+    const char *headers[] = {"Value","Result (hf_exp2)","Result (exp2f)","Difference"};
+    int i, row = 0;
+
+    for(i = 0; i < num_tests; i++) {
+        float v = test_values[i];
+        uint16_t hv = float_to_half(v);
+        uint16_t rh = hf_exp2(hv);
+        float r = half_to_float(rh);
+        float std;
+        float diff;
+
+        if(isnan(v)) std = NAN;
+        else if(isinf(v)) std = (v > 0.0f) ? INFINITY : 0.0f;
+        else std = exp2f(half_to_float(hv));
+
+        diff = (isnan(r) && isnan(std)) ? 0.0f : fabsf(r - std);
+        results[row][0] = v;
+        results[row][1] = r;
+        results[row][2] = std;
+        results[row][3] = diff;
+        row++;
+    }
+
+    print_formatted_table("### HF_EXP2", headers, 4, results, row);
+    printf("\n");
+}
+
+/**
+ * @brief Fonction de débogage pour tester la fonction hf_exp10
+ *
+ * Teste 10^x pour les cas particuliers puis pour des valeurs generales
+ */
+void debug_exp10(void) {
+    float test_values[] = {
+        NAN, half_to_float(HF_NAN), INFINITY, -INFINITY, half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_NEG),
+        -4.0f, -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f, 4.0f
+    };
+    int num_tests = sizeof(test_values)/sizeof(test_values[0]);
+    float results[64][8];
+    const char *headers[] = {"Value","Result (hf_exp10)","Result (powf(10,x))","Difference"};
+    int i, row = 0;
+
+    for(i = 0; i < num_tests; i++) {
+        float v = test_values[i];
+        uint16_t hv = float_to_half(v);
+        uint16_t rh = hf_exp10(hv);
+        float r = half_to_float(rh);
+        float std;
+        float diff;
+
+        if(isnan(v)) std = NAN;
+        else if(isinf(v)) std = (v > 0.0f) ? INFINITY : 0.0f;
+        else std = powf(10.0f, half_to_float(hv));
+
+        diff = (isnan(r) && isnan(std)) ? 0.0f : fabsf(r - std);
+        results[row][0] = v;
+        results[row][1] = r;
+        results[row][2] = std;
+        results[row][3] = diff;
+        row++;
+    }
+
+    print_formatted_table("### HF_EXP10", headers, 4, results, row);
+    printf("\n");
+}
+
+
+/**
  * @brief Fonction de débogage pour tester la fonction hf_sin avec divers cas de test
  * 
  * Cette fonction teste le sinus de demi-flottants avec des angles variés

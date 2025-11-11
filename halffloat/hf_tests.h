@@ -39,7 +39,11 @@ void debug_fma(void);
 
 void debug_pow(void);
 void debug_exp(void);
+void debug_exp2(void);
 void debug_ln(void);
+void debug_log2(void);
+void debug_log10(void);
+void debug_exp10(void);
 
 void debug_sin(void);
 void debug_cos(void);
