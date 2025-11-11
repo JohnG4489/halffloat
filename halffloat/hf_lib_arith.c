@@ -405,51 +405,50 @@ uint16_t hf_fma(uint16_t hfa, uint16_t hfb, uint16_t hfc) {
     half_float inputb = decompose_half(hfb);
     half_float inputc = decompose_half(hfc);
 
-    /* Initialisation par défaut: NaN positif (sécurité) */
+    //Initialisation par défaut: NaN positif (sécurité)
     result.sign = HF_ZERO_POS;
     result.exp = HF_EXP_FULL;
     result.mant = 1;
 
-    /* Cas spéciaux: NaN - propager le premier NaN rencontré */
+    //Cas spéciaux: NaN - propager le premier NaN rencontré
     if(is_nan(&inputa) || is_nan(&inputb) || is_nan(&inputc)) {
         if(is_nan(&inputa)) result.sign = inputa.sign;
         else if(is_nan(&inputb)) result.sign = inputb.sign;
         else result.sign = inputc.sign;
     }
-    /* inf * 0 -> NaN */
+    //inf * 0 -> NaN (convention)
     else if((is_infinity(&inputa) && is_zero(&inputb)) || (is_infinity(&inputb) && is_zero(&inputa))) {
         result.sign = HF_ZERO_NEG;
     }
-    /* produit inf (+/-) */
+    //Produit inf (+/-)
     else if(is_infinity(&inputa) || is_infinity(&inputb)) {
         uint16_t prod_sign = (inputa.sign ^ inputb.sign) ? HF_ZERO_NEG : HF_ZERO_POS;
 
         if(is_infinity(&inputc)) {
-            /* inf + inf : si signes opposés -> NaN, sinon inf */
+            //inf + inf : si signes opposés -> NaN, sinon inf
             if(prod_sign != inputc.sign) {
                 result.sign = HF_ZERO_NEG;
             } else {
-                result = inputc; /* inf with sign */
+                result = inputc; //inf avec signe
             }
         } else {
-            /* inf + finite = inf */
+            //inf + valeur finie = inf
             result.sign = prod_sign;
             result.exp = HF_EXP_FULL;
             result.mant = 0;
         }
     }
-    /* c inf and product finite -> return c */
+    //Si c est inf et que le produit est fini -> retourner c
     else if(is_infinity(&inputc)) {
         result = inputc;
     }
     else {
-        /* Cas général: calculer a*b + c via helpers */
+        //Cas général: calculer a*b + c via helpers
         uint16_t prod = hf_mul(hfa, hfb);
         uint16_t sum = hf_add(prod, hfc);
         result = decompose_half(sum);
     }
 
-    /* Unique point de sortie: composer */
     return compose_half(&result);
 }
 
@@ -465,7 +464,6 @@ uint16_t hf_hypot(uint16_t hfx, uint16_t hfy) {
     return HF_NAN;
 }
 
-//Opérations modulo - stubs pour l'instant
 /**
  * @brief Calcule le reste de la division flottante
  *

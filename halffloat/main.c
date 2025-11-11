@@ -52,6 +52,9 @@ int main(int argc, char *argv[]) {
 
     debug_min();
     debug_max();
+    debug_modf();
+    debug_copysign();
+    debug_frexp();
 
     debug_abs();
     debug_neg();

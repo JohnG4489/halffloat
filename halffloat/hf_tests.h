@@ -23,6 +23,9 @@ void debug_trunc(void);
 
 void debug_min(void);
 void debug_max(void);
+void debug_modf(void);
+void debug_copysign(void);
+void debug_frexp(void);
 
 void debug_abs(void);
 void debug_neg(void);

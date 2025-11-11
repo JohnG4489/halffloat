@@ -143,8 +143,64 @@ uint16_t hf_max(uint16_t hf1, uint16_t hf2) {
  * @param intpart Pointeur vers la partie entière (optionnel)
  * @return La partie fractionnaire
  */
+/**
+ * @brief Sépare la partie entière et fractionnaire
+ *
+ * Décompose un demi-flottant en sa partie entière et sa partie fractionnaire.
+ * Les deux parties ont le même signe que l'entrée.
+ *
+ * Cas particuliers (IEEE 754):
+ *  - modf(±0) = ±0 (partie entière) + ±0 (partie fractionnaire)
+ *  - modf(±Inf) = ±Inf (partie entière) + ±0 (partie fractionnaire)
+ *  - modf(NaN) = NaN (partie entière) + NaN (partie fractionnaire)
+ *
+ * @param hf Le demi-flottant à décomposer
+ * @param intpart Pointeur vers la partie entière (optionnel)
+ * @return La partie fractionnaire
+ */
 uint16_t hf_modf(uint16_t hf, uint16_t *intpart) {
-    (void)hf; if(intpart) *intpart = HF_NAN; return HF_NAN;
+    //Initialisation
+    half_float input = decompose_half(hf);
+    half_float hf_int = input;
+    half_float hf_frac = input;
+    
+    //Cas spéciaux: Inf
+    if(is_infinity(&input)) {
+        hf_frac.exp = HF_EXP_MIN;
+        hf_frac.mant = 0;
+    }
+    //Cas normaux et subnormaux (Zero et NaN restent inchangés)
+    else if(!is_zero(&input) && !is_nan(&input)) {
+        int exp_val = input.exp;
+        
+        //|hf| < 1 : partie entière = ±0, partie fractionnaire = hf
+        if(exp_val < 0) {
+            hf_int.exp = HF_EXP_MIN;
+            hf_int.mant = 0;
+        }
+        //|hf| >= 2^10 : pas de partie fractionnaire
+        else if(exp_val >= HF_MANT_BITS) {
+            hf_frac.exp = HF_EXP_MIN;
+            hf_frac.mant = 0;
+        }
+        else {
+            //Séparer mantisse en partie entière et fractionnaire
+            int shift = HF_MANT_BITS - exp_val;
+            uint32_t mask = (1U << (shift + HF_PRECISION_SHIFT)) - 1U;
+            
+            hf_int.mant = input.mant & ~mask;
+            hf_frac.mant = input.mant & mask;
+            
+            //Préparer la partie fractionnaire
+            if(hf_frac.mant == 0)  hf_frac.exp = HF_EXP_MIN;
+
+            normalize_and_round(&hf_frac);
+        }
+    }
+    
+    //Composer les résultats
+    if(intpart) *intpart = compose_half(&hf_int);
+    return compose_half(&hf_frac);
 }
 
 /**
@@ -155,7 +211,27 @@ uint16_t hf_modf(uint16_t hf, uint16_t *intpart) {
  * @return La mantisse normalisée
  */
 uint16_t hf_frexp(uint16_t hf, int *exp) {
-    (void)hf; if(exp) *exp = 0; return HF_NAN;
+    half_float mant = decompose_half(hf);
+    int new_exp = 0;
+
+    //Cas spéciaux: NaN, Inf, Zero -> renvoyer tel quel et exp=0
+    if(!is_nan(&mant) && !is_infinity(&mant) && !is_zero(&mant)) {
+        //Normaliser les subnormaux pour récupérer un bit implicite cohérent
+        normalize_denormalized_mantissa(&mant);
+
+        //Pour x != 0, frexp retourne m dans [0.5,1) et e tel que x = m * 2^e
+        //Pour un demi-flottant normalisé S in [1,2), on prend m = S/2 et e = exp+1.
+        //Représentons m directement en demi-flottant avec exp = 0 et mantisse >> 1.
+        new_exp = mant.exp + 1;
+
+        mant.exp = 0;
+        mant.mant = (mant.mant >> 1) & ~HF_ROUND_BIT_MASK;
+        normalize_and_round(&mant);
+    }
+
+    //Retourne la mantisse et l'exposant
+    if(exp) *exp = new_exp;
+    return compose_half(&mant);
 }
 
 /**
@@ -208,7 +284,8 @@ int hf_ilogb(uint16_t hf) {
  * @return mag avec le signe de sign
  */
 uint16_t hf_copysign(uint16_t mag, uint16_t sign) {
-    (void)mag; (void)sign; return HF_NAN;
+    //Copie le bit de signe depuis 'sign' vers 'mag' via masquage
+    return (mag & ~HF_MASK_SIGN) | (sign & HF_MASK_SIGN);
 }
 
 /**

@@ -254,7 +254,6 @@ uint16_t hf_pow(uint16_t hfbase, uint16_t hfexp) {
     return compose_half(&result);
 }
 
-/* Stubs pour les autres fonctions */
 /**
  * @brief Calcule le logarithme en base 2 d'un demi-flottant
  *

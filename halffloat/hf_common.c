@@ -188,10 +188,10 @@ uint16_t compose_half(const half_float *hf) {
     uint16_t result = hf->sign;
 
     //Gestion des cas spéciaux
-    if (hf->exp == HF_EXP_FULL) {
+    if(hf->exp == HF_EXP_FULL) {
         //Cas infini ou NaN: si mantisse non nulle, c'est NaN, sinon infini
         result |= (hf->mant != 0 ? HF_NAN : HF_INFINITY_POS);
-    } else if (hf->mant & HF_MANT_NORM_MIN) {
+    } else if(hf->mant & HF_MANT_NORM_MIN) {
         //Cas normalisé: bit implicite présent dans la mantisse
         //Encoder l'exposant avec le biais et écrire la mantisse sans le bit implicite
         uint16_t exp_bits = (hf->exp + HF_EXP_BIAS) & HF_MASK_EXP;

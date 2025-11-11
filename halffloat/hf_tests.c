@@ -66,7 +66,7 @@ void debug_int(void) {
         results[i][2] = std_result;
         results[i][3] = diff;
     }
-    
+
     //Afficher le tableau formaté
     print_formatted_table("### HF_INT", headers, 4, results, num_tests);
 
@@ -266,6 +266,155 @@ void debug_max(void) {
 }
 
 /**
+ * @brief Fonction de test pour hf_modf
+ */
+void debug_modf(void) {
+    float test_values[] = {
+        //Zéros signés
+        0.0f, -0.0f,
+        //Petites valeurs et dénormalisées
+        5.96e-8f, -5.96e-8f, 1.49e-8f, -1.49e-8f,
+        //Valeurs autour de 1
+        0.9999f, -0.9999f, 1.0f, -1.0f,
+        //Juste sous/au-dessus des bornes entières
+        1.0f, 1.00097656f, //1+1/1024 env.
+        1.999f, -1.999f, 2.0f, -2.0f,
+        //Grandes valeurs et cas limites
+        65504.0f, -65504.0f, 65503.0f,
+        //Valeurs fractionnaires diverses
+        123.456f, -123.456f, 15.999f, -15.999f,
+        //Entiers
+        256.0f, -256.0f, 1024.0f,
+        //NaN et infinis
+        NAN, INFINITY, -INFINITY
+    };
+    int num = sizeof(test_values)/sizeof(test_values[0]);
+    float results[64][8];
+    const char *headers[] = {"Value","Int (my)","Frac (my)","Int (std)","Frac (std)","Diff","Remarks",""};
+    int i;
+    for(i = 0; i < num; i++) {
+        float v = test_values[i];
+        uint16_t hv = float_to_half(v);
+        uint16_t intpart_hf = 0;
+        uint16_t frac_hf = hf_modf(hv, &intpart_hf);
+        float int_my = half_to_float(intpart_hf);
+        float frac_my = half_to_float(frac_hf);
+        float int_std = 0.0f;
+        float frac_std = 0.0f;
+        float diff = 0.0f;
+        float vq = half_to_float(hv); //Utiliser la valeur quantifiée comme référence (comparer hf_modf à modf sur la même valeur FP16)
+
+        if(isnan(vq)) { int_std = NAN; frac_std = NAN; }
+        else if(isinf(vq)) { int_std = vq; frac_std = copysignf(0.0f, vq); }
+        else { frac_std = modff(vq, &int_std); }
+
+        diff = fabsf(frac_my - frac_std);
+
+        results[i][0] = v;
+        results[i][1] = int_my;
+        results[i][2] = frac_my;
+        results[i][3] = int_std;
+        results[i][4] = frac_std;
+        results[i][5] = diff;
+        results[i][6] = 0.0f;
+        results[i][7] = 0.0f;
+    }
+
+    print_formatted_table("### HF_MODF", headers, 6, results, num);
+    printf("\n");
+}
+
+/**
+ * @brief Test simple pour hf_copysign
+ *
+ * Vérifie la copie du bit de signe sur quelques cas représentatifs
+ */
+void debug_copysign(void) {
+    float test_values[][2] = {
+        {0.0f, -0.0f},
+        {1.5f, -2.0f},
+        {-3.25f, 4.0f},
+        {half_to_float(HF_NAN), -1.0f},
+        {half_to_float(HF_INFINITY_POS), -0.0f}
+    };
+    int num_tests = sizeof(test_values) / sizeof(test_values[0]);
+    float results[10][8];
+    const char *headers[] = {"Mag", "SignFrom", "Result (my)", "Result (expected)", "Diff"};
+    int i;
+
+    for(i = 0; i < num_tests; i++) {
+        float magf = test_values[i][0];
+        float signf = test_values[i][1];
+        uint16_t magh = float_to_half(magf);
+        uint16_t signh = float_to_half(signf);
+
+        uint16_t res_h = hf_copysign(magh, signh);
+        float resf = half_to_float(res_h);
+
+        //attendu: copier le bit de signe de signf sur magf via des opérations float pour la comparaison
+        float expectedf = copysignf(magf, signf);
+
+        float diff = fabsf(resf - expectedf);
+
+        results[i][0] = magf;
+        results[i][1] = signf;
+        results[i][2] = resf;
+        results[i][3] = expectedf;
+        results[i][4] = diff;
+    }
+
+    print_formatted_table("### HF_COPYSIGN", headers, 5, results, num_tests);
+    printf("\n");
+}
+
+/**
+ * @brief Test simple pour hf_frexp
+ *
+ * Compare hf_frexp à frexpf en utilisant la valeur quantifiée (FP16) comme référence.
+ */
+void debug_frexp(void) {
+    float test_values[] = {
+        0.0f, -0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
+        3.14159f, 65504.0f, 6.103515625e-5f, -6.103515625e-5f, 
+        5.96e-8f, -5.96e-8f, 2.98e-8f, -2.98e-8f, 1.49e-8f, -1.49e-8f, 
+        5.96e-9f, -5.96e-9f, NAN, INFINITY, -INFINITY
+    };
+    int num = sizeof(test_values)/sizeof(test_values[0]);
+    float results[32][8];
+    const char *headers[] = {"Value","m (my)","e (my)","m (std)","e (std)","Diff"};
+    int i;
+
+    for(i = 0; i < num; i++) {
+        float v = test_values[i];
+        uint16_t hv = float_to_half(v);
+
+        int e_my = 0;
+        uint16_t m_hf = hf_frexp(hv, &e_my);
+        float m_my = half_to_float(m_hf);
+
+        float vq = half_to_float(hv);
+        float m_std = 0.0f;
+        int e_std = 0;
+
+        if(isnan(vq) || isinf(vq) || vq == 0.0f) {
+            m_std = vq; e_std = 0;
+        } else {
+            m_std = frexpf(vq, &e_std);
+        }
+
+        results[i][0] = v;
+        results[i][1] = m_my;
+        results[i][2] = (float)e_my;
+        results[i][3] = m_std;
+        results[i][4] = (float)e_std;
+        results[i][5] = fabsf(m_my - m_std);
+    }
+
+    print_formatted_table("### HF_FREXP", headers, 6, results, num);
+    printf("\n");
+}
+
+/**
  * @brief Fonction de débogage pour tester la fonction hf_abs avec divers cas de test
  * 
  * Cette fonction teste la valeur absolue de demi-flottants avec une variété de cas
@@ -455,13 +604,13 @@ void debug_mul(void) {
         {-2.5f, half_to_float(hf_ln(float_to_half(-1.0f)))},
         {half_to_float(hf_sqrt(float_to_half(-3.0f))), half_to_float(hf_sqrt(float_to_half(-2.0f)))},
         //Cas dénormalisés (subnormal values) - multiplication edge cases
-        //Denormal * Denormal
+        //Dénormalisé * Dénormalisé
         {5.96e-8f, 5.96e-8f}, {-5.96e-8f, 5.96e-8f}, {5.96e-8f, -5.96e-8f}, {-5.96e-8f, -5.96e-8f},
-        //Denormal * Large (max half-float ~65504)
+        //Dénormalisé * Grand (max half-float ~65504)
         {5.96e-8f, 65504.0f}, {5.96e-8f, -65504.0f}, {-5.96e-8f, 65504.0f}, {-5.96e-8f, -65504.0f},
-        //Large * Denormal
+        //Grand * Dénormalisé
         {65504.0f, 5.96e-8f}, {65504.0f, -5.96e-8f}, {-65504.0f, 5.96e-8f}, {-65504.0f, -5.96e-8f},
-        //Denormal * 1.0 (identity behavior and sign propagation)
+        //Dénormalisé * 1.0 (comportement d'identité et propagation du signe)
         {5.96e-8f, 1.0f}, {1.0f, 5.96e-8f}, {-5.96e-8f, 1.0f}, {1.0f, -5.96e-8f}
     };
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
@@ -520,7 +669,7 @@ void debug_div(void) {
         {half_to_float(HF_INFINITY_POS), -2.0f}, {half_to_float(HF_INFINITY_NEG), -2.0f},
         {2.0f, half_to_float(HF_INFINITY_POS)}, {2.0f, half_to_float(HF_INFINITY_NEG)},
         {-2.0f, half_to_float(HF_INFINITY_POS)}, {-2.0f, half_to_float(HF_INFINITY_NEG)},
-        //Division of zero by infinity should yield +-0 (or 0) per IEEE rules
+        //La division de zéro par l'infini doit donner +-0 (ou 0) selon les règles IEEE
         {0.0f, half_to_float(HF_INFINITY_POS)}, {0.0f, half_to_float(HF_INFINITY_NEG)},
         {half_to_float(HF_INFINITY_POS), half_to_float(HF_INFINITY_POS)},
         {half_to_float(HF_INFINITY_NEG), half_to_float(HF_INFINITY_NEG)},
@@ -857,8 +1006,8 @@ void debug_pow(void) {
         {-1.0f, 0.5f},       //(-1)^0.5 = NaN (indéfini en réel)
         {-1.0f, -0.5f},      //(-1)^(-0.5) = NaN (idem)
         {-1.0f, 2.5f},       //(-1)^2.5 = NaN
-        {-1.0f, half_to_float(HF_INFINITY_POS)},  //(-1)^+Inf = 1 (|base| == 1 -> result 1 per IEEE)
-        {-1.0f, half_to_float(HF_INFINITY_NEG)}   //(-1)^-Inf = 1 (|base| == 1 -> result 1 per IEEE)
+        {-1.0f, half_to_float(HF_INFINITY_POS)},  //(-1)^+Inf = 1 (|base| == 1 -> résultat 1 selon IEEE)
+        {-1.0f, half_to_float(HF_INFINITY_NEG)}   //(-1)^-Inf = 1 (|base| == 1 -> résultat 1 selon IEEE)
     };
     int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
     int i;
@@ -905,8 +1054,8 @@ void debug_exp(void) {
         1.0f,  //exp(1) = e environ 2.718
         -1.0f, //exp(-1) = 1/e environ 0.368
         //Tests de overflow/underflow systematiques
-        11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, //Overflow tests
-        -11.0f, -12.0f, -13.0f, -14.0f, -15.0f, -16.0f, //Underflow tests
+        11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, //Tests d'overflow (dépassement)
+        -11.0f, -12.0f, -13.0f, -14.0f, -15.0f, -16.0f, //Tests d'underflow (sous-flux)
         //Cas normaux étendus
         0.035f, 0.1f, 0.5f, 2.0f, 3.0f, 5.0f, 10.0f,
         -0.012f, -0.1f, -0.5f, -2.0f, -3.0f, -5.0f, -10.0f,
@@ -999,7 +1148,7 @@ void debug_ln(void) {
     int i;
 
     //Préparer les données pour le tableau formaté
-    float results[50][8]; /* Tableau statique suffisant pour tous les tests étendus */
+    float results[50][8]; //Tableau statique suffisant pour tous les tests étendus
     const char *headers[] = {"Value", "Result (my_ln)", "Result (std::ln)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -1047,7 +1196,7 @@ void debug_sin(void) {
     int i;
 
     //Préparer les données pour le tableau formaté
-    float results[25][8]; /* Tableau statique suffisant pour tous les tests */
+    float results[25][8]; //Tableau statique suffisant pour tous les tests
     const char *headers[] = {"Angle (rad)", "Result (hf_sin)", "Result (sinf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -1095,7 +1244,7 @@ void debug_cos(void) {
     int i;
 
     //Préparer les données pour le tableau formaté
-    float results[25][8]; /* Tableau statique suffisant pour tous les tests */
+    float results[25][8]; //Tableau statique suffisant pour tous les tests
     const char *headers[] = {"Angle (rad)", "Result (hf_cos)", "Result (cosf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -1147,7 +1296,7 @@ void debug_tan(void) {
     int i;
 
     //Préparer les données pour le tableau formaté
-    float results[70][8]; /* Tableau statique suffisant pour tous les tests */
+    float results[70][8]; //Tableau statique suffisant pour tous les tests
     const char *headers[] = {"Angle (rad)", "Result (hf_tan)", "Result (tanf)", "Difference"};
 
     for(i = 0; i < num_tests; i++) {
@@ -2467,7 +2616,7 @@ void debug_tan_near_pi2(void) {
  * @param num_rows Nombre de lignes
  */
 static void print_formatted_table(const char *title, const char **headers, int num_cols, float data[][8], int num_rows) {
-    int col_widths[8] = {0}; /* Maximum 8 colonnes */
+    int col_widths[8] = {0}; //Maximum 8 colonnes
     int i, j, width;
     char buffer[32];
     

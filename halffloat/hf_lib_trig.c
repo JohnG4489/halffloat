@@ -218,7 +218,7 @@ uint16_t hf_atan(uint16_t hf) {
                 //ratio = |x|
                 ratio = norm << (15 - HF_MANT_SHIFT);
             }
-            
+
             //Clamp ratio à 1.0 en Q15
             if(ratio > (1 << 15)) ratio = (1 << 15);
         }
@@ -283,7 +283,7 @@ uint16_t hf_atan2(uint16_t hfy, uint16_t hfx) {
         int use_complement = (exp_diff > 0 || (exp_diff == 0 && inputy.mant > inputx.mant));
         int32_t ratio;
         
-        if (use_complement) {
+        if(use_complement) {
             exp_diff = -exp_diff;
             numerator = &inputx;
             denominator = &inputy;
